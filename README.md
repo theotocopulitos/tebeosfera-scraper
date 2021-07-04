@@ -1,3 +1,13 @@
+## Description
+
+**---------- Do not download - nothing working yet --------------------**
+
+This is a WIP. After years of coding the orgininal CV Scraper for Comicrack, which was inmesenly improved by cbanack, I need an Spanish language scraper. Rather than starting from scratch, I am considering the latest version of CV and of bedetheque scrapers as a basis for my scraper. Best source I have found so far is tebeosfera.com
+
+I leave you now with the original docs:
+
+
+
 ## Current Status
 
 I am maintaining the Comic Vine Scraper project, but **I am no longer actively adding new features.**
