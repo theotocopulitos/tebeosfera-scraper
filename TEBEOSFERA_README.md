@@ -92,6 +92,13 @@ python tebeosfera_gui.py
 - **Vista previa de portadas**: Muestra la portada del comic extraída del archivo
 - **Búsqueda integrada**: Busca en TebeoSfera directamente desde la GUI
 - **Selección visual**: Ve las portadas de series e issues antes de seleccionar
+- **⭐ Comparación automática de portadas** (NUEVO):
+  - Compara visualmente la portada del comic con los resultados de TebeoSfera
+  - Calcula porcentaje de similitud usando algoritmos de hashing perceptual (dHash + histogramas)
+  - Pre-selecciona automáticamente el mejor match (marcado con ⭐)
+  - Muestra score de similitud para cada resultado (ej: "85% similar")
+  - Siempre requiere confirmación del usuario
+  - Funciona tanto para series como para issues
 - **Procesamiento por lotes**: Procesa múltiples comics de una vez
 - **Barra de progreso**: Seguimiento visual del procesamiento
 - **Generación automática**: Genera e inyecta ComicInfo.xml en los CBZ
@@ -102,14 +109,19 @@ python tebeosfera_gui.py
 2. **Seleccionar comic**: Haz clic en un comic de la lista para ver su portada
 3. **Buscar en TebeoSfera**: Click en "🔍 Buscar en TebeoSfera"
    - Se muestra un diálogo de búsqueda con resultados automáticos basados en el nombre
+   - ⭐ **La GUI compara automáticamente** la portada del comic con los resultados
+   - El mejor match se marca con ⭐ y se pre-selecciona automáticamente
+   - Cada resultado muestra su porcentaje de similitud (ej: "Tintín (92% similar)")
    - Selecciona una serie y haz click en "Ver Issues →"
-   - Selecciona el issue específico
+   - ⭐ **La GUI vuelve a comparar** con las portadas de los issues
+   - Selecciona el issue específico (o confirma el sugerido)
    - Las portadas se muestran automáticamente al seleccionar
 4. **Generar XML**: Click en "💾 Generar ComicInfo.xml"
 5. **Procesamiento por lotes**:
    - Selecciona múltiples comics (Ctrl+Click o Shift+Click)
    - Click en "▶ Procesar seleccionados"
    - O usa "▶▶ Procesar todos" para procesar toda la lista
+   - La comparación automática funciona para cada comic en el lote
 
 ### Línea de Comandos (CLI) 💻
 

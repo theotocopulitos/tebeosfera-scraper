@@ -48,6 +48,124 @@ except ImportError as e:
     sys.exit(1)
 
 
+class ImageComparator(object):
+    '''Compares images to find visual similarity'''
+
+    @staticmethod
+    def calculate_dhash(image, hash_size=8):
+        '''Calculate difference hash (dHash) for an image'''
+        # Resize to hash_size + 1 width, hash_size height
+        resized = image.convert('L').resize((hash_size + 1, hash_size), Image.ANTIALIAS)
+        pixels = list(resized.getdata())
+
+        # Calculate differences between adjacent pixels
+        difference = []
+        for row in range(hash_size):
+            for col in range(hash_size):
+                pixel_left = pixels[row * (hash_size + 1) + col]
+                pixel_right = pixels[row * (hash_size + 1) + col + 1]
+                difference.append(pixel_left > pixel_right)
+
+        # Convert to hexadecimal hash
+        return difference
+
+    @staticmethod
+    def hamming_distance(hash1, hash2):
+        '''Calculate Hamming distance between two hashes'''
+        if len(hash1) != len(hash2):
+            return -1
+        return sum(h1 != h2 for h1, h2 in zip(hash1, hash2))
+
+    @staticmethod
+    def compare_images(image1, image2):
+        '''
+        Compare two images and return similarity score (0-100)
+        100 = identical, 0 = completely different
+        '''
+        if not image1 or not image2:
+            return 0
+
+        try:
+            # Calculate dHash for both images
+            hash1 = ImageComparator.calculate_dhash(image1)
+            hash2 = ImageComparator.calculate_dhash(image2)
+
+            # Calculate Hamming distance
+            distance = ImageComparator.hamming_distance(hash1, hash2)
+
+            # Convert to similarity percentage (lower distance = higher similarity)
+            max_distance = len(hash1)
+            similarity = 100.0 * (1.0 - float(distance) / max_distance)
+
+            return similarity
+        except Exception as e:
+            print("Error comparing images: {0}".format(e))
+            return 0
+
+    @staticmethod
+    def compare_histograms(image1, image2):
+        '''
+        Compare images using histogram correlation (backup method)
+        Returns similarity score 0-100
+        '''
+        if not image1 or not image2:
+            return 0
+
+        try:
+            # Convert to RGB and resize to same size
+            img1 = image1.convert('RGB').resize((100, 100), Image.ANTIALIAS)
+            img2 = image2.convert('RGB').resize((100, 100), Image.ANTIALIAS)
+
+            # Get histograms
+            h1 = img1.histogram()
+            h2 = img2.histogram()
+
+            # Calculate correlation (simplified)
+            sum1 = float(sum(h1))
+            sum2 = float(sum(h2))
+
+            if sum1 == 0 or sum2 == 0:
+                return 0
+
+            # Normalize and compare
+            correlation = 0.0
+            for i in range(len(h1)):
+                correlation += min(h1[i] / sum1, h2[i] / sum2)
+
+            return correlation * 100.0
+        except Exception as e:
+            print("Error comparing histograms: {0}".format(e))
+            return 0
+
+    @staticmethod
+    def find_best_match(source_image, candidate_images):
+        '''
+        Find the best matching image from a list of candidates
+        Returns (best_index, similarity_scores)
+        '''
+        if not source_image or not candidate_images:
+            return -1, []
+
+        scores = []
+        for candidate in candidate_images:
+            if candidate:
+                # Use dHash as primary method
+                score_dhash = ImageComparator.compare_images(source_image, candidate)
+                # Use histogram as secondary for validation
+                score_hist = ImageComparator.compare_histograms(source_image, candidate)
+                # Weighted average (dHash is more reliable for similar images)
+                final_score = score_dhash * 0.7 + score_hist * 0.3
+                scores.append(final_score)
+            else:
+                scores.append(0)
+
+        if not scores:
+            return -1, []
+
+        best_index = scores.index(max(scores))
+        return best_index, scores
+
+
 class ComicFile(object):
     '''Represents a comic file to be scraped'''
 
@@ -522,6 +640,11 @@ class SearchDialog(tk.Toplevel):
         self.cover_images = {}  # Cache for PhotoImage objects
         self.mode = 'series'  # 'series' or 'issues'
 
+        # Image comparison data
+        self.downloaded_images = []  # Store PIL images for comparison
+        self.similarity_scores = []  # Store similarity scores
+        self.best_match_index = -1  # Index of best match
+
         self._create_ui()
 
         # Auto-search based on filename
@@ -633,18 +756,83 @@ class SearchDialog(tk.Toplevel):
                 self.results_listbox.delete(0, tk.END)
                 self.search_results = results
 
-                for result in results:
-                    self.results_listbox.insert(tk.END, result.series_name_s)
-
                 if not results:
                     self.results_listbox.insert(tk.END, "Sin resultados")
                     self.status_label.config(text="Sin resultados")
+                    return
+
+                # Display results first
+                for result in results:
+                    self.results_listbox.insert(tk.END, result.series_name_s)
+
+                self.status_label.config(text="{0} series encontradas - Comparando portadas...".format(len(results)))
+
+                # Start image comparison if comic has a cover
+                if self.comic.cover_image:
+                    self._compare_covers_with_results(results)
                 else:
                     self.status_label.config(text="{0} series encontradas".format(len(results)))
 
             self.after(0, update_results)
 
         thread = threading.Thread(target=search_thread)
+        thread.daemon = True
+        thread.start()
+
+    def _compare_covers_with_results(self, results):
+        '''Compare comic cover with search results covers'''
+        def compare_thread():
+            self.downloaded_images = []
+            self.similarity_scores = []
+
+            # Download all covers
+            for result in results:
+                try:
+                    image_data = self.db.query_image(result)
+                    if image_data:
+                        image = Image.open(StringIO(image_data))
+                        self.downloaded_images.append(image)
+                    else:
+                        self.downloaded_images.append(None)
+                except:
+                    self.downloaded_images.append(None)
+
+            # Compare with comic cover
+            if self.comic.cover_image and self.downloaded_images:
+                self.best_match_index, self.similarity_scores = ImageComparator.find_best_match(
+                    self.comic.cover_image,
+                    self.downloaded_images
+                )
+
+                def update_ui():
+                    # Update listbox with scores
+                    self.results_listbox.delete(0, tk.END)
+                    for i, result in enumerate(results):
+                        score = self.similarity_scores[i] if i < len(self.similarity_scores) else 0
+                        prefix = "⭐ " if i == self.best_match_index and score > 60 else "   "
+                        display_text = "{0}{1} ({2:.0f}% similar)".format(prefix, result.series_name_s, score)
+                        self.results_listbox.insert(tk.END, display_text)
+
+                    # Auto-select best match if score is good enough
+                    if self.best_match_index >= 0 and self.similarity_scores[self.best_match_index] > 60:
+                        self.results_listbox.selection_clear(0, tk.END)
+                        self.results_listbox.selection_set(self.best_match_index)
+                        self.results_listbox.see(self.best_match_index)
+                        self.results_listbox.activate(self.best_match_index)
+                        # Trigger selection event
+                        self.selected_series = self.search_results[self.best_match_index]
+                        self._show_series_preview(self.selected_series)
+
+                        best_score = self.similarity_scores[self.best_match_index]
+                        self.status_label.config(
+                            text="Mejor match encontrado: {0:.0f}% similar (⭐ marcado)".format(best_score)
+                        )
+                    else:
+                        self.status_label.config(text="{0} series encontradas".format(len(results)))
+
+                self.after(0, update_ui)
+
+        thread = threading.Thread(target=compare_thread)
         thread.daemon = True
         thread.start()
 
@@ -761,19 +949,85 @@ class SearchDialog(tk.Toplevel):
                 self.results_listbox.delete(0, tk.END)
                 self.issues_list = issues
 
+                if not issues:
+                    self.results_listbox.insert(tk.END, "Sin issues encontrados")
+                    self.status_label.config(text="Sin issues")
+                    return
+
+                # Display issues first
                 for issue in issues:
                     display_text = "#{0} - {1}".format(issue.issue_num_s, issue.title_s)
                     self.results_listbox.insert(tk.END, display_text)
 
-                if not issues:
-                    self.results_listbox.insert(tk.END, "Sin issues encontrados")
-                    self.status_label.config(text="Sin issues")
+                self.status_label.config(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
+
+                # Start image comparison if comic has a cover
+                if self.comic.cover_image:
+                    self._compare_covers_with_issues(issues)
                 else:
                     self.status_label.config(text="{0} issues encontrados".format(len(issues)))
 
             self.after(0, update_issues)
 
         thread = threading.Thread(target=query_issues)
+        thread.daemon = True
+        thread.start()
+
+    def _compare_covers_with_issues(self, issues):
+        '''Compare comic cover with issue covers'''
+        def compare_thread():
+            self.downloaded_images = []
+            self.similarity_scores = []
+
+            # Download all issue covers
+            for issue in issues:
+                try:
+                    image_data = self.db.query_image(issue)
+                    if image_data:
+                        image = Image.open(StringIO(image_data))
+                        self.downloaded_images.append(image)
+                    else:
+                        self.downloaded_images.append(None)
+                except:
+                    self.downloaded_images.append(None)
+
+            # Compare with comic cover
+            if self.comic.cover_image and self.downloaded_images:
+                self.best_match_index, self.similarity_scores = ImageComparator.find_best_match(
+                    self.comic.cover_image,
+                    self.downloaded_images
+                )
+
+                def update_ui():
+                    # Update listbox with scores
+                    self.results_listbox.delete(0, tk.END)
+                    for i, issue in enumerate(issues):
+                        score = self.similarity_scores[i] if i < len(self.similarity_scores) else 0
+                        prefix = "⭐ " if i == self.best_match_index and score > 60 else "   "
+                        display_text = "{0}#{1} - {2} ({3:.0f}% similar)".format(
+                            prefix, issue.issue_num_s, issue.title_s, score)
+                        self.results_listbox.insert(tk.END, display_text)
+
+                    # Auto-select best match if score is good enough
+                    if self.best_match_index >= 0 and self.similarity_scores[self.best_match_index] > 60:
+                        self.results_listbox.selection_clear(0, tk.END)
+                        self.results_listbox.selection_set(self.best_match_index)
+                        self.results_listbox.see(self.best_match_index)
+                        self.results_listbox.activate(self.best_match_index)
+                        # Trigger selection event
+                        self.selected_issue = self.issues_list[self.best_match_index]
+                        self._show_issue_preview(self.selected_issue)
+
+                        best_score = self.similarity_scores[self.best_match_index]
+                        self.status_label.config(
+                            text="Mejor match encontrado: {0:.0f}% similar (⭐ marcado)".format(best_score)
+                        )
+                    else:
+                        self.status_label.config(text="{0} issues encontrados".format(len(issues)))
+
+                self.after(0, update_ui)
+
+        thread = threading.Thread(target=compare_thread)
         thread.daemon = True
         thread.start()
 
@@ -784,12 +1038,23 @@ class SearchDialog(tk.Toplevel):
         self.results_label.config(text="Series encontradas:")
         self.select_button.config(text="Ver Issues →", command=self._view_issues)
 
-        # Restore series list
+        # Restore series list with scores if available
         self.results_listbox.delete(0, tk.END)
-        for result in self.search_results:
-            self.results_listbox.insert(tk.END, result.series_name_s)
+        for i, result in enumerate(self.search_results):
+            if i < len(self.similarity_scores):
+                score = self.similarity_scores[i]
+                prefix = "⭐ " if i == self.best_match_index and score > 60 else "   "
+                display_text = "{0}{1} ({2:.0f}% similar)".format(prefix, result.series_name_s, score)
+            else:
+                display_text = result.series_name_s
+            self.results_listbox.insert(tk.END, display_text)
 
-        self.status_label.config(text="{0} series encontradas".format(len(self.search_results)))
+        if self.best_match_index >= 0 and self.best_match_index < len(self.similarity_scores):
+            best_score = self.similarity_scores[self.best_match_index]
+            self.status_label.config(text="{0} series encontradas - Mejor match: {1:.0f}% similar".format(
+                len(self.search_results), best_score))
+        else:
+            self.status_label.config(text="{0} series encontradas".format(len(self.search_results)))
 
     def _select_issue(self):
         '''Select issue and fetch full metadata'''
