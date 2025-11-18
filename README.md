@@ -1,8 +1,44 @@
 ## Description
 
-**---------- Do not download - nothing working yet --------------------**
+**🎉 ¡AHORA FUNCIONAL! - TebeoSfera Scraper para Comics Españoles 🎉**
 
-This is a WIP. After years of coding the orgininal CV Scraper for Comicrack, which was inmesenly improved by cbanack, I need an Spanish language scraper. Rather than starting from scratch, I am considering the latest version of CV and of bedetheque scrapers as a basis for my scraper. Best source I have found so far is tebeosfera.com
+Este proyecto ha sido completamente renovado para convertirse en un scraper funcional de **tebeosfera.com**,
+la mejor base de datos de cómics en español.
+
+### ✨ Nuevas Características
+
+- ✅ **Scraping completo desde tebeosfera.com**
+- ✅ **Generación de ComicInfo.xml** estándar para lectores como ComicRack, Kavita, Komga
+- ✅ **Campos específicos españoles**: ISBN, Depósito Legal, Formato (Álbum/Grapa), Encuadernación, Traductor, etc.
+- ✅ **Script standalone** - No requiere ComicRack, funciona desde línea de comandos
+- ✅ **Inyección de metadatos en CBZ** - Inserta ComicInfo.xml en tus archivos existentes
+
+### 🚀 Inicio Rápido
+
+```bash
+# Buscar un comic
+python tebeosfera_scraper.py search "Thorgal"
+
+# Ver detalles de un número
+python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5"
+
+# Generar ComicInfo.xml
+python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" -o ComicInfo.xml
+
+# Inyectar en CBZ
+python tebeosfera_scraper.py inject "mi_comic.cbz" "leyendas_de_los_otori_2021_tengu_5"
+
+# Ejecutar tests
+python test_scraper.py
+```
+
+### 📚 Documentación Completa
+
+Ver **[TEBEOSFERA_README.md](TEBEOSFERA_README.md)** para documentación completa en español.
+
+---
+
+## Original Comic Vine Scraper Documentation
 
 I leave you now with the original docs:
 

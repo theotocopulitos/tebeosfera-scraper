@@ -280,7 +280,26 @@ class Issue(object):
       self.colorists_sl = []
       self.letterers_sl = []
       self.image_urls_sl = []
-      
+
+      # Spanish-specific fields for tebeosfera.com
+      self.translators_sl = []  # Translators
+      self.adapted_authors_sl = []  # Original authors for adaptations
+      self.isbn_s = ''  # ISBN number
+      self.legal_deposit_s = ''  # Depósito Legal
+      self.price_s = ''  # Price with currency (e.g., "18.00 €")
+      self.format_s = ''  # Format (Álbum, Grapa, Tomo, etc.)
+      self.binding_s = ''  # Binding type (Cartoné, Rústica, etc.)
+      self.dimensions_s = ''  # Physical dimensions (e.g., "31 x 23 cm")
+      self.page_count_n = -1  # Number of pages
+      self.color_s = ''  # Color info (COLOR, B/N, etc.)
+      self.origin_title_s = ''  # Original title if translation
+      self.origin_publisher_s = ''  # Original publisher
+      self.origin_country_s = ''  # Country of origin
+      self.language_s = ''  # Language/translation info
+      self.collection_s = ''  # Collection name
+      self.collection_url_s = ''  # URL to collection page
+      self.issue_count_n = -1  # Total issues in series
+
 
    # the external, unique db key of this Issue, as a string 
    def __set_issue_key(self, issue_key):
@@ -582,7 +601,7 @@ class Issue(object):
    letterers_sl = property(lambda self: self.__letterers_sl, __set_letterers_sl)
    
    
-   # the known cover image urls for this Issue, as a [] of strings. not None. 
+   # the known cover image urls for this Issue, as a [] of strings. not None.
    # maybe empty.  the strings in the [] will not be None or '', either.
    def __set_image_urls_sl(self, image_urls_sl):
       ''' called when you assign a value to 'self.image_urls_sl' '''
@@ -593,9 +612,150 @@ class Issue(object):
          self.__image_urls_sl = []
    image_urls_sl = \
       property(lambda self: self.__image_urls_sl, __set_image_urls_sl)
-   
-      
-         
+
+
+   # ============= Spanish-specific field properties =============
+
+   # the translators for this Issue, as a [] of strings. not None. maybe empty.
+   # the strings in the [] will not be None or '', either.
+   def __set_translators_sl(self, translators_sl):
+      ''' called when you assign a value to 'self.translators_sl' '''
+      try:
+         self.__translators_sl = [ re.sub(r',|;', '', sstr(x))
+            for x in translators_sl if x and len(sstr(x).strip())>0 ]
+      except:
+         self.__translators_sl = []
+   translators_sl = property(lambda self: self.__translators_sl, __set_translators_sl)
+
+
+   # the adapted authors for this Issue, as a [] of strings. not None. maybe empty.
+   def __set_adapted_authors_sl(self, adapted_authors_sl):
+      ''' called when you assign a value to 'self.adapted_authors_sl' '''
+      try:
+         self.__adapted_authors_sl = [ re.sub(r',|;', '', sstr(x))
+            for x in adapted_authors_sl if x and len(sstr(x).strip())>0 ]
+      except:
+         self.__adapted_authors_sl = []
+   adapted_authors_sl = property(lambda self: self.__adapted_authors_sl, __set_adapted_authors_sl)
+
+
+   # the ISBN for this Issue, as a string. not None. maybe empty.
+   def __set_isbn_s(self, isbn_s):
+      ''' called when you assign a value to 'self.isbn_s' '''
+      self.__isbn_s = '' if isbn_s == None else sstr(isbn_s)
+   isbn_s = property(lambda self: self.__isbn_s, __set_isbn_s)
+
+
+   # the legal deposit for this Issue, as a string. not None. maybe empty.
+   def __set_legal_deposit_s(self, legal_deposit_s):
+      ''' called when you assign a value to 'self.legal_deposit_s' '''
+      self.__legal_deposit_s = '' if legal_deposit_s == None else sstr(legal_deposit_s)
+   legal_deposit_s = property(lambda self: self.__legal_deposit_s, __set_legal_deposit_s)
+
+
+   # the price for this Issue, as a string. not None. maybe empty.
+   def __set_price_s(self, price_s):
+      ''' called when you assign a value to 'self.price_s' '''
+      self.__price_s = '' if price_s == None else sstr(price_s)
+   price_s = property(lambda self: self.__price_s, __set_price_s)
+
+
+   # the format for this Issue, as a string. not None. maybe empty.
+   def __set_format_s(self, format_s):
+      ''' called when you assign a value to 'self.format_s' '''
+      self.__format_s = '' if format_s == None else sstr(format_s)
+   format_s = property(lambda self: self.__format_s, __set_format_s)
+
+
+   # the binding for this Issue, as a string. not None. maybe empty.
+   def __set_binding_s(self, binding_s):
+      ''' called when you assign a value to 'self.binding_s' '''
+      self.__binding_s = '' if binding_s == None else sstr(binding_s)
+   binding_s = property(lambda self: self.__binding_s, __set_binding_s)
+
+
+   # the dimensions for this Issue, as a string. not None. maybe empty.
+   def __set_dimensions_s(self, dimensions_s):
+      ''' called when you assign a value to 'self.dimensions_s' '''
+      self.__dimensions_s = '' if dimensions_s == None else sstr(dimensions_s)
+   dimensions_s = property(lambda self: self.__dimensions_s, __set_dimensions_s)
+
+
+   # the page count for this Issue, as an int. not None.
+   # will always be >= 0 or else -1 for unknown.
+   def __set_page_count_n(self, page_count_n):
+      ''' called when you assign a value to 'self.page_count_n' '''
+      try:
+         self.__page_count_n = int(page_count_n)
+         self.__page_count_n = self.__page_count_n if self.__page_count_n >= 0 else -1
+      except:
+         self.__page_count_n = -1
+   page_count_n = property(lambda self: self.__page_count_n, __set_page_count_n)
+
+
+   # the color info for this Issue, as a string. not None. maybe empty.
+   def __set_color_s(self, color_s):
+      ''' called when you assign a value to 'self.color_s' '''
+      self.__color_s = '' if color_s == None else sstr(color_s)
+   color_s = property(lambda self: self.__color_s, __set_color_s)
+
+
+   # the original title for this Issue, as a string. not None. maybe empty.
+   def __set_origin_title_s(self, origin_title_s):
+      ''' called when you assign a value to 'self.origin_title_s' '''
+      self.__origin_title_s = '' if origin_title_s == None else sstr(origin_title_s)
+   origin_title_s = property(lambda self: self.__origin_title_s, __set_origin_title_s)
+
+
+   # the original publisher for this Issue, as a string. not None. maybe empty.
+   def __set_origin_publisher_s(self, origin_publisher_s):
+      ''' called when you assign a value to 'self.origin_publisher_s' '''
+      self.__origin_publisher_s = '' if origin_publisher_s == None else sstr(origin_publisher_s)
+   origin_publisher_s = property(lambda self: self.__origin_publisher_s, __set_origin_publisher_s)
+
+
+   # the country of origin for this Issue, as a string. not None. maybe empty.
+   def __set_origin_country_s(self, origin_country_s):
+      ''' called when you assign a value to 'self.origin_country_s' '''
+      self.__origin_country_s = '' if origin_country_s == None else sstr(origin_country_s)
+   origin_country_s = property(lambda self: self.__origin_country_s, __set_origin_country_s)
+
+
+   # the language/translation info for this Issue, as a string. not None. maybe empty.
+   def __set_language_s(self, language_s):
+      ''' called when you assign a value to 'self.language_s' '''
+      self.__language_s = '' if language_s == None else sstr(language_s)
+   language_s = property(lambda self: self.__language_s, __set_language_s)
+
+
+   # the collection name for this Issue, as a string. not None. maybe empty.
+   def __set_collection_s(self, collection_s):
+      ''' called when you assign a value to 'self.collection_s' '''
+      self.__collection_s = '' if collection_s == None else sstr(collection_s)
+   collection_s = property(lambda self: self.__collection_s, __set_collection_s)
+
+
+   # the collection URL for this Issue, as a string. not None. maybe empty.
+   def __set_collection_url_s(self, collection_url_s):
+      ''' called when you assign a value to 'self.collection_url_s' '''
+      self.__collection_url_s = '' if collection_url_s == None else sstr(collection_url_s)
+   collection_url_s = property(lambda self: self.__collection_url_s, __set_collection_url_s)
+
+
+   # the issue count for this series, as an int. not None.
+   # will always be >= 0 or else -1 for unknown.
+   def __set_issue_count_n(self, issue_count_n):
+      ''' called when you assign a value to 'self.issue_count_n' '''
+      try:
+         self.__issue_count_n = int(issue_count_n)
+         self.__issue_count_n = self.__issue_count_n if self.__issue_count_n >= 0 else -1
+      except:
+         self.__issue_count_n = -1
+   issue_count_n = property(lambda self: self.__issue_count_n, __set_issue_count_n)
+
+
+
+
    #===========================================================================
    def __str__(self):
       ''' Implements "to string" functionality for standard python objects. '''
