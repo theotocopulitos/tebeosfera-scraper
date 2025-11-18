@@ -19,6 +19,8 @@ import sys
 import os
 import argparse
 import json
+import subprocess
+import platform
 
 # Add src/py to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
@@ -38,10 +40,57 @@ except ImportError as e:
 class TebeoSferaScraper(object):
     '''Main scraper class'''
 
-    def __init__(self):
+    def __init__(self, show_covers=True):
         '''Initialize the scraper'''
         self.db = TebeoSferaDB()
         self.xml_generator = ComicInfoGenerator()
+        self.show_covers = show_covers
+        self.temp_dir = tempfile.mkdtemp(prefix='tebeosfera_')
+
+    def _open_image(self, filepath):
+        '''
+        Open an image file with the system default viewer.
+
+        filepath: Path to image file
+        '''
+        if not self.show_covers:
+            return
+
+        try:
+            system = platform.system()
+            if system == 'Darwin':  # macOS
+                subprocess.call(['open', filepath])
+            elif system == 'Windows':
+                os.startfile(filepath)
+            else:  # Linux and others
+                subprocess.call(['xdg-open', filepath])
+        except Exception as e:
+            print("Could not open image: {0}".format(e))
+            print("Image saved at: {0}".format(filepath))
+
+    def _show_cover(self, ref_or_url, label="Cover"):
+        '''
+        Download and display a cover image.
+
+        ref_or_url: IssueRef, SeriesRef, or URL string
+        label: Label for the image file
+        Returns: Path to saved image, or None
+        '''
+        if not self.show_covers:
+            return None
+
+        # Create safe filename from label
+        safe_label = "".join(c for c in label if c.isalnum() or c in (' ', '-', '_'))
+        filepath = os.path.join(self.temp_dir, "{0}.jpg".format(safe_label))
+
+        # Download and save image
+        if self.db.save_image(ref_or_url, filepath):
+            print("  [Opening cover image...]")
+            self._open_image(filepath)
+            return filepath
+        else:
+            print("  [No cover image available]")
+            return None
 
     def search_series(self, search_terms):
         '''
@@ -296,9 +345,89 @@ class TebeoSferaScraper(object):
             except:
                 pass
 
+    def show_series_covers(self, series_list, interactive=False):
+        '''
+        Show covers for a list of series.
+
+        series_list: List of SeriesRef objects or series dictionaries
+        interactive: If True, prompt user to select which covers to view
+        '''
+        if not self.show_covers or not series_list:
+            return
+
+        print("\n=== Series Covers ===")
+        for i, series in enumerate(series_list, 1):
+            if hasattr(series, 'series_name_s'):
+                # SeriesRef object
+                name = series.series_name_s
+                ref = series
+            else:
+                # Dictionary
+                name = series.get('name', 'Unknown')
+                # Create a simple object with thumb_url_s
+                class RefWrapper:
+                    def __init__(self, url):
+                        self.thumb_url_s = url
+                ref = RefWrapper(series.get('thumb_url'))
+
+            if ref.thumb_url_s:
+                print("{0}. {1}".format(i, name))
+                if interactive:
+                    response = raw_input("   View cover? (y/N): ")
+                    if response.lower() == 'y':
+                        self._show_cover(ref, "series_{0}".format(i))
+                else:
+                    # Auto-show only the first few
+                    if i <= 3:
+                        self._show_cover(ref, "series_{0}".format(i))
+
+    def show_issue_covers(self, issue_list, interactive=False):
+        '''
+        Show covers for a list of issues.
+
+        issue_list: List of IssueRef objects or issue dictionaries
+        interactive: If True, prompt user to select which covers to view
+        '''
+        if not self.show_covers or not issue_list:
+            return
+
+        print("\n=== Issue Covers ===")
+        for i, issue in enumerate(issue_list, 1):
+            if hasattr(issue, 'title_s'):
+                # IssueRef object
+                name = issue.title_s or "Issue {0}".format(issue.issue_num_s)
+                ref = issue
+            else:
+                # Dictionary
+                name = issue.get('title', 'Unknown')
+                class RefWrapper:
+                    def __init__(self, url):
+                        self.thumb_url_s = url
+                ref = RefWrapper(issue.get('thumb_url'))
+
+            if ref.thumb_url_s:
+                print("{0}. {1}".format(i, name))
+                if interactive:
+                    response = raw_input("   View cover? (y/N): ")
+                    if response.lower() == 'y':
+                        self._show_cover(ref, "issue_{0}".format(i))
+                else:
+                    # Auto-show only the first few
+                    if i <= 3:
+                        self._show_cover(ref, "issue_{0}".format(i))
+
+    def cleanup(self):
+        '''Clean up temporary files'''
+        try:
+            if os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir)
+        except:
+            pass
+
     def close(self):
-        '''Close database connections'''
+        '''Close database connections and clean up'''
         self.db.close()
+        self.cleanup()
 
 
 def main():
@@ -325,27 +454,39 @@ Examples:
         '''
     )
 
+    # Global options
+    parser.add_argument('--no-covers', action='store_true',
+                        help='Do not show cover images')
+
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
 
     # Search command
     search_parser = subparsers.add_parser('search', help='Search for series')
     search_parser.add_argument('query', help='Search query')
     search_parser.add_argument('--json', action='store_true', help='Output as JSON')
+    search_parser.add_argument('--interactive', '-i', action='store_true',
+                              help='Interactively choose which covers to view')
 
     # Series command
     series_parser = subparsers.add_parser('series', help='Get issues from a series')
     series_parser.add_argument('series_key', help='Series slug/key')
     series_parser.add_argument('--json', action='store_true', help='Output as JSON')
+    series_parser.add_argument('--interactive', '-i', action='store_true',
+                              help='Interactively choose which covers to view')
 
     # Issue command
     issue_parser = subparsers.add_parser('issue', help='Get issue details')
     issue_parser.add_argument('issue_key', help='Issue slug/key')
     issue_parser.add_argument('--json', action='store_true', help='Output as JSON')
+    issue_parser.add_argument('--show-cover', action='store_true',
+                            help='Show cover image')
 
     # XML command
     xml_parser = subparsers.add_parser('xml', help='Generate ComicInfo.xml')
     xml_parser.add_argument('issue_key', help='Issue slug/key')
     xml_parser.add_argument('-o', '--output', help='Output file path')
+    xml_parser.add_argument('--show-cover', action='store_true',
+                          help='Show cover image')
 
     # Inject command
     inject_parser = subparsers.add_parser('inject', help='Inject ComicInfo.xml into CBZ')
@@ -358,12 +499,27 @@ Examples:
         parser.print_help()
         return 1
 
-    # Create scraper
-    scraper = TebeoSferaScraper()
+    # Create scraper (with covers enabled unless --no-covers)
+    scraper = TebeoSferaScraper(show_covers=not args.no_covers)
 
     try:
         if args.command == 'search':
-            results = scraper.search_series(args.query)
+            # Get series results
+            series_list = scraper.db.search_series(args.query)
+
+            # Convert to dictionaries for display
+            results = []
+            for series_ref in series_list:
+                result = {
+                    'key': series_ref.series_key,
+                    'name': series_ref.series_name_s,
+                    'year': series_ref.volume_year_n if series_ref.volume_year_n > 0 else None,
+                    'publisher': series_ref.publisher_s,
+                    'issue_count': series_ref.issue_count_n,
+                    'thumb_url': series_ref.thumb_url_s
+                }
+                results.append(result)
+
             if args.json:
                 print(json.dumps(results, indent=2, ensure_ascii=False))
             else:
@@ -375,10 +531,40 @@ Examples:
                         print("   Year: {0}".format(result['year']))
                     if result.get('publisher'):
                         print("   Publisher: {0}".format(result['publisher']))
+                    if result.get('thumb_url'):
+                        print("   Cover: Available")
                     print()
 
+                # Show covers
+                if series_list:
+                    interactive = hasattr(args, 'interactive') and args.interactive
+                    scraper.show_series_covers(series_list, interactive=interactive)
+
         elif args.command == 'series':
-            results = scraper.get_series_issues(args.series_key)
+            # Get issues from series
+            from database.dbmodels import SeriesRef
+            series_ref = SeriesRef(
+                series_key=args.series_key,
+                series_name_s=args.series_key,
+                volume_year_n=-1,
+                publisher_s='',
+                issue_count_n=0,
+                thumb_url_s=None
+            )
+
+            issue_list = scraper.db.query_series_issues(series_ref)
+
+            # Convert to dictionaries
+            results = []
+            for issue_ref in issue_list:
+                result = {
+                    'key': issue_ref.issue_key,
+                    'number': issue_ref.issue_num_s,
+                    'title': issue_ref.title_s,
+                    'thumb_url': issue_ref.thumb_url_s
+                }
+                results.append(result)
+
             if args.json:
                 print(json.dumps(results, indent=2, ensure_ascii=False))
             else:
@@ -386,11 +572,22 @@ Examples:
                 for i, result in enumerate(results, 1):
                     print("{0}. #{1} - {2}".format(i, result['number'], result['title']))
                     print("   Key: {0}".format(result['key']))
+                    if result.get('thumb_url'):
+                        print("   Cover: Available")
                     print()
+
+                # Show covers
+                if issue_list:
+                    interactive = hasattr(args, 'interactive') and args.interactive
+                    scraper.show_issue_covers(issue_list, interactive=interactive)
 
         elif args.command == 'issue':
             result = scraper.get_issue_details(args.issue_key)
             if result:
+                # Show cover if requested
+                if hasattr(args, 'show_cover') and args.show_cover and result.get('images'):
+                    scraper._show_cover(result['images'][0], "issue_cover")
+
                 if args.json:
                     print(json.dumps(result, indent=2, ensure_ascii=False))
                 else:
@@ -416,6 +613,8 @@ Examples:
                         print("Format: {0}".format(result['format']))
                     if result.get('page_count'):
                         print("Pages: {0}".format(result['page_count']))
+                    if result.get('images'):
+                        print("Cover URL: {0}".format(result['images'][0]))
                     if result.get('summary'):
                         print("\nSummary:\n{0}".format(result['summary']))
             else:
@@ -424,6 +623,20 @@ Examples:
 
         elif args.command == 'xml':
             xml_content = scraper.generate_comicinfo_xml(args.issue_key, args.output)
+
+            # Show cover if requested
+            if hasattr(args, 'show_cover') and args.show_cover:
+                from database.dbmodels import IssueRef
+                issue_ref = IssueRef(
+                    issue_num_s="1",
+                    issue_key=args.issue_key,
+                    title_s="",
+                    thumb_url_s=None
+                )
+                issue = scraper.db.query_issue_details(issue_ref)
+                if issue and issue.image_urls_sl:
+                    scraper._show_cover(issue.image_urls_sl[0], "xml_cover")
+
             if xml_content and not args.output:
                 print(xml_content)
             elif not xml_content:

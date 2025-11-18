@@ -168,14 +168,27 @@ class TebeoSferaParser(object):
             genres = re.findall(r'<a[^>]*>([^<]+)</a>', genres_html)
             metadata['genres'] = [self._clean_text(g) for g in genres]
 
-        # Extract cover image
+        # Extract cover image (the first/main one)
         cover_match = re.search(
             r'<img id="img_principal"\s+src="([^"]+)"',
             html_content, re.IGNORECASE
         )
         if cover_match:
-            metadata['cover_image_url'] = cover_match.group(1)
-            metadata['image_urls'].append(cover_match.group(1))
+            cover_url = cover_match.group(1)
+            # Ensure it's a full URL
+            if not cover_url.startswith('http'):
+                cover_url = 'https://www.tebeosfera.com' + cover_url
+            metadata['cover_image_url'] = cover_url
+            metadata['image_urls'].append(cover_url)
+
+        # Extract all additional images from the page
+        all_images_pattern = r'<img[^>]*src="([^"]*T3_numeros[^"]*)"[^>]*>'
+        for img_match in re.finditer(all_images_pattern, html_content, re.IGNORECASE):
+            img_url = img_match.group(1)
+            if not img_url.startswith('http'):
+                img_url = 'https://www.tebeosfera.com' + img_url
+            if img_url not in metadata['image_urls']:
+                metadata['image_urls'].append(img_url)
 
         # Parse dates from the date field
         if metadata['date']:
@@ -332,14 +345,24 @@ class TebeoSferaParser(object):
         Parse search results page to extract issue links.
 
         html_content: HTML string from search results page
-        Returns: List of dictionaries with {slug, title, url}
+        Returns: List of dictionaries with {slug, title, url, thumb_url}
         '''
         results = []
 
-        # Extract issue links from search results
-        # Pattern for issue links: href="/numeros/SLUG.html"
-        pattern = r'href="(/numeros/([^"]+)\.html/?)"[^>]*>([^<]*)</a>'
+        # Extract issue links with thumbnails
+        # Look for pattern: <a href="/numeros/SLUG.html">...<img src="THUMB_URL">...
+        # We'll parse the HTML to find these connections
 
+        # First, extract all img tags with their URLs
+        img_pattern = r'<img[^>]*src="([^"]*T3_numeros[^"]*)"[^>]*>'
+        images = {}
+        for img_match in re.finditer(img_pattern, html_content, re.IGNORECASE):
+            img_url = img_match.group(1)
+            # Map position to URL for matching with links nearby
+            images[img_match.start()] = img_url
+
+        # Extract issue links
+        pattern = r'href="(/numeros/([^"]+)\.html/?)"[^>]*>([^<]*)</a>'
         matches = re.finditer(pattern, html_content, re.IGNORECASE)
 
         for match in matches:
@@ -348,16 +371,25 @@ class TebeoSferaParser(object):
             title_html = match.group(3)
             title = self._clean_text(title_html)
 
+            # Find closest image before this link (within 1000 chars)
+            thumb_url = None
+            match_pos = match.start()
+            for img_pos, img_url in images.items():
+                if img_pos < match_pos and match_pos - img_pos < 1000:
+                    thumb_url = img_url
+                    # Get the closest one
+                    break
+
             results.append({
                 'slug': slug,
                 'title': title if title else slug.replace('_', ' '),
                 'url': url,
+                'thumb_url': thumb_url,
                 'type': 'issue'
             })
 
-        # Also extract collection links
+        # Extract collection links with thumbnails
         pattern = r'href="(/colecciones/([^"]+)\.html)"[^>]*>([^<]*)</a>'
-
         matches = re.finditer(pattern, html_content, re.IGNORECASE)
 
         for match in matches:
@@ -366,10 +398,19 @@ class TebeoSferaParser(object):
             title_html = match.group(3)
             title = self._clean_text(title_html)
 
+            # Find closest image before this link (within 1000 chars)
+            thumb_url = None
+            match_pos = match.start()
+            for img_pos, img_url in images.items():
+                if img_pos < match_pos and match_pos - img_pos < 1000:
+                    thumb_url = img_url
+                    break
+
             results.append({
                 'slug': slug,
                 'title': title if title else slug.replace('_', ' '),
                 'url': url,
+                'thumb_url': thumb_url,
                 'type': 'collection'
             })
 

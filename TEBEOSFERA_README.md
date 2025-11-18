@@ -57,11 +57,27 @@ cd tebeosfera-scraper
 
 ## 💻 Uso
 
+### Visualización de Portadas 🖼️
+
+**¡NUEVA FUNCIONALIDAD!** El scraper ahora muestra automáticamente las portadas durante el proceso de búsqueda y selección, igual que el scraper original de ComicVine.
+
+- **Modo automático**: Muestra las primeras 3 portadas automáticamente
+- **Modo interactivo** (`-i`): Te pregunta qué portadas quieres ver
+- **Desactivar portadas**: Usa `--no-covers` para no mostrar imágenes
+
+Las portadas se descargan temporalmente y se abren con el visor de imágenes de tu sistema.
+
 ### Búsqueda de Series
 
 ```bash
-# Buscar una serie
+# Buscar una serie (muestra las 3 primeras portadas automáticamente)
 python tebeosfera_scraper.py search "Thorgal"
+
+# Modo interactivo (pregunta qué portadas ver)
+python tebeosfera_scraper.py search "Thorgal" -i
+
+# Sin mostrar portadas
+python tebeosfera_scraper.py search "Astérix" --no-covers
 
 # Salida JSON
 python tebeosfera_scraper.py search "Astérix" --json
@@ -70,8 +86,11 @@ python tebeosfera_scraper.py search "Astérix" --json
 ### Listar Issues de una Serie
 
 ```bash
-# Obtener issues de una colección
+# Obtener issues de una colección (muestra las 3 primeras portadas)
 python tebeosfera_scraper.py series "leyendas_de_los_otori_2021_tengu"
+
+# Modo interactivo para elegir qué portadas ver
+python tebeosfera_scraper.py series "tintin_1958_juventud" -i
 ```
 
 ### Detalles de un Issue
@@ -79,6 +98,9 @@ python tebeosfera_scraper.py series "leyendas_de_los_otori_2021_tengu"
 ```bash
 # Ver detalles completos de un tebeo
 python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5"
+
+# Ver detalles Y mostrar la portada
+python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --show-cover
 
 # Salida JSON
 python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --json
@@ -89,6 +111,9 @@ python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --json
 ```bash
 # Generar y mostrar ComicInfo.xml
 python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5"
+
+# Generar y ver la portada mientras se genera
+python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" --show-cover
 
 # Guardar en archivo
 python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" -o ComicInfo.xml

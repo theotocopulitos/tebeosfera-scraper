@@ -53,6 +53,11 @@ class TebeoSferaDB(object):
                 if slug not in seen_slugs:
                     seen_slugs.add(slug)
 
+                    # Get thumbnail URL and ensure it's absolute
+                    thumb_url = result.get('thumb_url')
+                    if thumb_url and not thumb_url.startswith('http'):
+                        thumb_url = 'https://www.tebeosfera.com' + thumb_url
+
                     # Create SeriesRef with collection slug as key
                     series_ref = SeriesRef(
                         series_key=slug,
@@ -60,7 +65,7 @@ class TebeoSferaDB(object):
                         volume_year_n=-1,  # Will be populated when querying series details
                         publisher_s='',
                         issue_count_n=0,
-                        thumb_url_s=None
+                        thumb_url_s=thumb_url
                     )
                     series_refs.append(series_ref)
 
@@ -108,11 +113,16 @@ class TebeoSferaDB(object):
                 slug = result['slug']
                 issue_num = self._extract_issue_number(slug)
 
+                # Get thumbnail URL and ensure it's absolute
+                thumb_url = result.get('thumb_url')
+                if thumb_url and not thumb_url.startswith('http'):
+                    thumb_url = 'https://www.tebeosfera.com' + thumb_url
+
                 issue_ref = IssueRef(
                     issue_num_s=issue_num,
                     issue_key=slug,
                     title_s=result['title'],
-                    thumb_url_s=None
+                    thumb_url_s=thumb_url
                 )
                 issue_refs.append(issue_ref)
 
@@ -171,11 +181,16 @@ class TebeoSferaDB(object):
                 slug = result['slug']
                 issue_num = self._extract_issue_number(slug)
 
+                # Get thumbnail URL and ensure it's absolute
+                thumb_url = result.get('thumb_url')
+                if thumb_url and not thumb_url.startswith('http'):
+                    thumb_url = 'https://www.tebeosfera.com' + thumb_url
+
                 issue_ref = IssueRef(
                     issue_num_s=issue_num,
                     issue_key=slug,
                     title_s=result['title'],
-                    thumb_url_s=None
+                    thumb_url_s=thumb_url
                 )
                 issue_refs.append(issue_ref)
 
@@ -298,6 +313,51 @@ class TebeoSferaDB(object):
 
         # Default to "1" if we can't extract a number
         return "1"
+
+    def query_image(self, ref_or_url):
+        '''
+        Download an image from tebeosfera.com.
+        Compatible with the existing scraper architecture.
+
+        ref_or_url: IssueRef, SeriesRef, or URL string
+        Returns: Binary image data, or None on error
+        '''
+        # Extract URL from ref or use directly
+        if hasattr(ref_or_url, 'thumb_url_s'):
+            url = ref_or_url.thumb_url_s
+        elif isinstance(ref_or_url, basestring):
+            url = ref_or_url
+        else:
+            log.debug("Invalid ref or URL for image query")
+            return None
+
+        if not url:
+            log.debug("No URL available for image")
+            return None
+
+        # Download the image
+        return self.connection.download_image(url)
+
+    def save_image(self, ref_or_url, filepath):
+        '''
+        Download and save an image to a file.
+
+        ref_or_url: IssueRef, SeriesRef, or URL string
+        filepath: Path where to save the image
+        Returns: True if successful, False otherwise
+        '''
+        # Extract URL
+        if hasattr(ref_or_url, 'thumb_url_s'):
+            url = ref_or_url.thumb_url_s
+        elif isinstance(ref_or_url, basestring):
+            url = ref_or_url
+        else:
+            return False
+
+        if not url:
+            return False
+
+        return self.connection.save_image(url, filepath)
 
     def close(self):
         '''Close the database connection'''

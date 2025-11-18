@@ -184,6 +184,26 @@ class TebeoSferaConnection(object):
             print("Error downloading image: {0}".format(sstr(e)))
             return None
 
+    def save_image(self, image_url, filepath):
+        '''
+        Download and save an image to a file.
+
+        image_url: URL of the image
+        filepath: Path where to save the image
+        Returns: True if successful, False otherwise
+        '''
+        image_data = self.download_image(image_url)
+        if not image_data:
+            return False
+
+        try:
+            with open(filepath, 'wb') as f:
+                f.write(image_data)
+            return True
+        except Exception as e:
+            print("Error saving image: {0}".format(sstr(e)))
+            return False
+
     def _get_charset(self, response):
         '''
         Extract charset from HTTP response headers.
