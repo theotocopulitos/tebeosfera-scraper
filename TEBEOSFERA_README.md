@@ -40,10 +40,17 @@ Scraper completo para extraer metadatos de comics españoles desde tebeosfera.co
 
 ## 📋 Requisitos
 
+### Requisitos Mínimos (CLI)
 - Python 2.7 (compatible con el código base existente)
 - Acceso a Internet para consultar tebeosfera.com
+- No se requieren dependencias externas - usa solo librerías estándar de Python
 
-No se requieren dependencias externas - usa solo librerías estándar de Python.
+### Requisitos GUI
+- Python 2.7 con tkinter (incluido en la mayoría de instalaciones)
+- PIL/Pillow para manejo de imágenes:
+  ```bash
+  pip install pillow
+  ```
 
 ## 🚀 Instalación
 
@@ -57,7 +64,58 @@ cd tebeosfera-scraper
 
 ## 💻 Uso
 
-### Visualización de Portadas 🖼️
+### Interfaz Gráfica (GUI) 🖥️
+
+**¡NUEVO!** Ahora incluye una interfaz gráfica completa para facilitar el uso:
+
+#### Lanzar la GUI
+
+**Linux/Mac:**
+```bash
+./tebeosfera_gui.sh
+```
+
+**Windows:**
+```bash
+tebeosfera_gui.bat
+```
+
+**O directamente con Python:**
+```bash
+python tebeosfera_gui.py
+```
+
+#### Características de la GUI
+
+- **Navegación de archivos**: Abre archivos CBZ/CBR individuales o directorios completos
+- **Escaneo recursivo**: Opción para incluir subdirectorios
+- **Vista previa de portadas**: Muestra la portada del comic extraída del archivo
+- **Búsqueda integrada**: Busca en TebeoSfera directamente desde la GUI
+- **Selección visual**: Ve las portadas de series e issues antes de seleccionar
+- **Procesamiento por lotes**: Procesa múltiples comics de una vez
+- **Barra de progreso**: Seguimiento visual del procesamiento
+- **Generación automática**: Genera e inyecta ComicInfo.xml en los CBZ
+
+#### Flujo de trabajo
+
+1. **Abrir comics**: Usa "Abrir archivos" o "Abrir carpeta" para cargar comics
+2. **Seleccionar comic**: Haz clic en un comic de la lista para ver su portada
+3. **Buscar en TebeoSfera**: Click en "🔍 Buscar en TebeoSfera"
+   - Se muestra un diálogo de búsqueda con resultados automáticos basados en el nombre
+   - Selecciona una serie y haz click en "Ver Issues →"
+   - Selecciona el issue específico
+   - Las portadas se muestran automáticamente al seleccionar
+4. **Generar XML**: Click en "💾 Generar ComicInfo.xml"
+5. **Procesamiento por lotes**:
+   - Selecciona múltiples comics (Ctrl+Click o Shift+Click)
+   - Click en "▶ Procesar seleccionados"
+   - O usa "▶▶ Procesar todos" para procesar toda la lista
+
+### Línea de Comandos (CLI) 💻
+
+La funcionalidad CLI sigue disponible para scripts y automatización:
+
+#### Visualización de Portadas 🖼️
 
 **¡NUEVA FUNCIONALIDAD!** El scraper ahora muestra automáticamente las portadas durante el proceso de búsqueda y selección, igual que el scraper original de ComicVine.
 
@@ -130,7 +188,10 @@ python tebeosfera_scraper.py inject "mi_comic.cbz" "leyendas_de_los_otori_2021_t
 
 ```
 tebeosfera-scraper/
-├── tebeosfera_scraper.py          # Script principal standalone
+├── tebeosfera_gui.py              # ⭐ Aplicación GUI (nuevo)
+├── tebeosfera_gui.sh              # Launcher para Linux/Mac
+├── tebeosfera_gui.bat             # Launcher para Windows
+├── tebeosfera_scraper.py          # Script CLI standalone
 ├── src/py/
 │   ├── comicinfo_xml.py           # Generador de ComicInfo.xml
 │   ├── database/
