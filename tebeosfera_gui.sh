@@ -8,4 +8,4 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # Run the GUI
-python tebeosfera_gui.py "$@"
+python3 tebeosfera_gui.py "$@"

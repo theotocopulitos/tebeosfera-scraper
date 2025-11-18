@@ -8,8 +8,9 @@ error handling, and session management.
 '''
 
 import time
-import urllib
-import urllib2
+import urllib.request
+import urllib.parse
+import urllib.error
 import re
 from utils import sstr
 
@@ -40,10 +41,10 @@ class TebeoSferaConnection(object):
     def _init_session(self):
         '''Initialize HTTP session with cookies and headers'''
         # Create cookie handler
-        cookie_handler = urllib2.HTTPCookieProcessor()
+        cookie_handler = urllib.request.HTTPCookieProcessor()
 
         # Create opener with cookie support
-        self.__session_opener = urllib2.build_opener(cookie_handler)
+        self.__session_opener = urllib.request.build_opener(cookie_handler)
 
         # Set user agent
         self.__session_opener.addheaders = [
@@ -87,9 +88,9 @@ class TebeoSferaConnection(object):
 
             # Handle gzip encoding if present
             if response.info().get('Content-Encoding') == 'gzip':
-                import StringIO
+                import io
                 import gzip
-                buf = StringIO.StringIO(html_content)
+                buf = io.BytesIO(html_content)
                 f = gzip.GzipFile(fileobj=buf)
                 html_content = f.read()
 
@@ -106,10 +107,10 @@ class TebeoSferaConnection(object):
 
             return html_content
 
-        except urllib2.HTTPError as e:
+        except urllib.error.HTTPError as e:
             print("HTTP Error {0}: {1}".format(e.code, e.reason))
             return None
-        except urllib2.URLError as e:
+        except urllib.error.URLError as e:
             print("URL Error: {0}".format(e.reason))
             return None
         except Exception as e:

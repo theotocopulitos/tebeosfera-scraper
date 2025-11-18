@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 '''
 TebeoSfera GUI - Graphical interface for comic metadata scraper
@@ -20,17 +20,15 @@ Features:
 import sys
 import os
 import threading
-import Queue
+import queue
 
 # Add src/py to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
 
-# Tkinter imports (Python 2.7 compatible)
+# Tkinter imports (Python 3)
 try:
-    import Tkinter as tk
-    import tkFileDialog as filedialog
-    import tkMessageBox as messagebox
-    import ttk
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
     from PIL import Image, ImageTk
 except ImportError as e:
     print("Error: This GUI requires tkinter and PIL/Pillow")
@@ -42,7 +40,7 @@ try:
     from comicinfo_xml import ComicInfoGenerator
     import zipfile
     import tempfile
-    from StringIO import StringIO
+    from io import BytesIO
 except ImportError as e:
     print("Error importing modules: {0}".format(e))
     sys.exit(1)
@@ -192,7 +190,7 @@ class ComicFile(object):
                 if images:
                     # Read first image
                     image_data = zf.read(images[0])
-                    self.cover_image = Image.open(StringIO(image_data))
+                    self.cover_image = Image.open(BytesIO(image_data))
                     return self.cover_image
         except Exception as e:
             print("Error extracting cover from {0}: {1}".format(self.filename, e))
@@ -217,7 +215,7 @@ class TebeoSferaGUI(tk.Tk):
         self.current_comic_index = 0
 
         # Thread-safe queue for UI updates
-        self.update_queue = Queue.Queue()
+        self.update_queue = queue.Queue()
 
         # Create UI
         self._create_menu()
@@ -600,7 +598,7 @@ class TebeoSferaGUI(tk.Tk):
             while True:
                 callback = self.update_queue.get_nowait()
                 callback()
-        except Queue.Empty:
+        except queue.Empty:
             pass
 
         self.after(100, self._process_queue)
@@ -790,7 +788,7 @@ class SearchDialog(tk.Toplevel):
                 try:
                     image_data = self.db.query_image(result)
                     if image_data:
-                        image = Image.open(StringIO(image_data))
+                        image = Image.open(BytesIO(image_data))
                         self.downloaded_images.append(image)
                     else:
                         self.downloaded_images.append(None)
@@ -876,7 +874,7 @@ class SearchDialog(tk.Toplevel):
             if image_data:
                 def show_cover():
                     try:
-                        image = Image.open(StringIO(image_data))
+                        image = Image.open(BytesIO(image_data))
                         image.thumbnail((300, 450), Image.ANTIALIAS)
                         photo = ImageTk.PhotoImage(image)
                         self.preview_label.config(image=photo, text='')
@@ -910,7 +908,7 @@ class SearchDialog(tk.Toplevel):
             if image_data:
                 def show_cover():
                     try:
-                        image = Image.open(StringIO(image_data))
+                        image = Image.open(BytesIO(image_data))
                         image.thumbnail((300, 450), Image.ANTIALIAS)
                         photo = ImageTk.PhotoImage(image)
                         self.preview_label.config(image=photo, text='')
@@ -984,7 +982,7 @@ class SearchDialog(tk.Toplevel):
                 try:
                     image_data = self.db.query_image(issue)
                     if image_data:
-                        image = Image.open(StringIO(image_data))
+                        image = Image.open(BytesIO(image_data))
                         self.downloaded_images.append(image)
                     else:
                         self.downloaded_images.append(None)

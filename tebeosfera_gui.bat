@@ -5,4 +5,4 @@ REM Change to script directory
 cd /d "%~dp0"
 
 REM Run the GUI
-python tebeosfera_gui.py %*
+python3 tebeosfera_gui.py %*

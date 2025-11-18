@@ -8,8 +8,8 @@ Uses BeautifulSoup-like approach with basic HTML parsing.
 '''
 
 import re
-from HTMLParser import HTMLParser
-from htmlentitydefs import name2codepoint
+from html.parser import HTMLParser
+from html.entities import name2codepoint
 from utils import sstr
 
 

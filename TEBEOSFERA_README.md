@@ -41,15 +41,15 @@ Scraper completo para extraer metadatos de comics españoles desde tebeosfera.co
 ## 📋 Requisitos
 
 ### Requisitos Mínimos (CLI)
-- Python 2.7 (compatible con el código base existente)
+- **Python 3.6+**
 - Acceso a Internet para consultar tebeosfera.com
 - No se requieren dependencias externas - usa solo librerías estándar de Python
 
 ### Requisitos GUI
-- Python 2.7 con tkinter (incluido en la mayoría de instalaciones)
+- **Python 3.6+** con tkinter (incluido en la mayoría de instalaciones)
 - PIL/Pillow para manejo de imágenes:
   ```bash
-  pip install pillow
+  pip3 install pillow
   ```
 
 ## 🚀 Instalación
@@ -59,7 +59,11 @@ Scraper completo para extraer metadatos de comics españoles desde tebeosfera.co
 git clone https://github.com/tuusuario/tebeosfera-scraper.git
 cd tebeosfera-scraper
 
-# No requiere instalación adicional - listo para usar
+# Instalar dependencias (solo para GUI)
+pip3 install -r requirements.txt
+
+# O manualmente:
+pip3 install pillow
 ```
 
 ## 💻 Uso
@@ -82,7 +86,7 @@ tebeosfera_gui.bat
 
 **O directamente con Python:**
 ```bash
-python tebeosfera_gui.py
+python3 tebeosfera_gui.py
 ```
 
 #### Características de la GUI
@@ -141,59 +145,59 @@ Las portadas se descargan temporalmente y se abren con el visor de imágenes de 
 
 ```bash
 # Buscar una serie (muestra las 3 primeras portadas automáticamente)
-python tebeosfera_scraper.py search "Thorgal"
+python3 tebeosfera_scraper.py search "Thorgal"
 
 # Modo interactivo (pregunta qué portadas ver)
-python tebeosfera_scraper.py search "Thorgal" -i
+python3 tebeosfera_scraper.py search "Thorgal" -i
 
 # Sin mostrar portadas
-python tebeosfera_scraper.py search "Astérix" --no-covers
+python3 tebeosfera_scraper.py search "Astérix" --no-covers
 
 # Salida JSON
-python tebeosfera_scraper.py search "Astérix" --json
+python3 tebeosfera_scraper.py search "Astérix" --json
 ```
 
 ### Listar Issues de una Serie
 
 ```bash
 # Obtener issues de una colección (muestra las 3 primeras portadas)
-python tebeosfera_scraper.py series "leyendas_de_los_otori_2021_tengu"
+python3 tebeosfera_scraper.py series "leyendas_de_los_otori_2021_tengu"
 
 # Modo interactivo para elegir qué portadas ver
-python tebeosfera_scraper.py series "tintin_1958_juventud" -i
+python3 tebeosfera_scraper.py series "tintin_1958_juventud" -i
 ```
 
 ### Detalles de un Issue
 
 ```bash
 # Ver detalles completos de un tebeo
-python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5"
+python3 tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5"
 
 # Ver detalles Y mostrar la portada
-python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --show-cover
+python3 tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --show-cover
 
 # Salida JSON
-python tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --json
+python3 tebeosfera_scraper.py issue "leyendas_de_los_otori_2021_tengu_5" --json
 ```
 
 ### Generar ComicInfo.xml
 
 ```bash
 # Generar y mostrar ComicInfo.xml
-python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5"
+python3 tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5"
 
 # Generar y ver la portada mientras se genera
-python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" --show-cover
+python3 tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" --show-cover
 
 # Guardar en archivo
-python tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" -o ComicInfo.xml
+python3 tebeosfera_scraper.py xml "leyendas_de_los_otori_2021_tengu_5" -o ComicInfo.xml
 ```
 
 ### Inyectar ComicInfo.xml en CBZ
 
 ```bash
 # Inyectar metadatos en un archivo CBZ
-python tebeosfera_scraper.py inject "mi_comic.cbz" "leyendas_de_los_otori_2021_tengu_5"
+python3 tebeosfera_scraper.py inject "mi_comic.cbz" "leyendas_de_los_otori_2021_tengu_5"
 ```
 
 ## 📖 Estructura del Proyecto
@@ -230,10 +234,10 @@ Para usar el scraper necesitas el "slug" del issue (identificador único en la U
 O usa el comando `search` para encontrar slugs:
 
 ```bash
-python tebeosfera_scraper.py search "Leyendas de los Otori"
+python3 tebeosfera_scraper.py search "Leyendas de los Otori"
 # Te mostrará los slugs de todas las colecciones encontradas
 
-python tebeosfera_scraper.py series "leyendas_de_los_otori_2021_tengu"
+python3 tebeosfera_scraper.py series "leyendas_de_los_otori_2021_tengu"
 # Te mostrará los slugs de todos los números de la colección
 ```
 
