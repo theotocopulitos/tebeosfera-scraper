@@ -10,7 +10,7 @@ Uses BeautifulSoup-like approach with basic HTML parsing.
 import re
 from html.parser import HTMLParser
 from html.entities import name2codepoint
-from utils import sstr
+from utils_compat import sstr
 
 
 class TebeoSferaParser(object):

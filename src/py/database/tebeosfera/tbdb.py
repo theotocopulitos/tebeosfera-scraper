@@ -7,11 +7,10 @@ the HTML parsing results to the standard Issue and Series model classes.
 @author: Comic Scraper Enhancement Project
 '''
 
-from dbmodels import Issue, IssueRef, SeriesRef
-from tbconnection import TebeoSferaConnection, get_connection
-from tbparser import TebeoSferaParser
-from utils import sstr
-import log
+from database.dbmodels import Issue, IssueRef, SeriesRef
+from .tbconnection import TebeoSferaConnection, get_connection
+from .tbparser import TebeoSferaParser
+from utils_compat import sstr, log
 
 
 class TebeoSferaDB(object):

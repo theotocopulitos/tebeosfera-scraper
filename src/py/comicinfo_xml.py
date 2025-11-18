@@ -11,7 +11,7 @@ Standard fields reference: https://anansi-project.github.io/docs/comicinfo/schem
 
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
-from utils import sstr
+from utils_compat import sstr
 
 
 class ComicInfoGenerator(object):

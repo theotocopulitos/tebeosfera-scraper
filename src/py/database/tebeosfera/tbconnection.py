@@ -12,7 +12,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import re
-from utils import sstr
+from utils_compat import sstr
 
 
 class TebeoSferaConnection(object):

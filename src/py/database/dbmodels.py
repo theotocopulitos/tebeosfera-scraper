@@ -7,8 +7,8 @@ methods.
 '''
 
 import re
-from utils import sstr
-import utils
+from utils_compat import sstr
+import utils_compat as utils
 
 #==============================================================================
 class IssueRef(object):
