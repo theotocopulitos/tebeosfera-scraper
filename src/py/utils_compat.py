@@ -52,19 +52,22 @@ class SimpleLog:
     '''Simple logging for standalone operation'''
 
     @staticmethod
-    def write(message):
+    def write(*args):
         '''Write a log message to stdout'''
+        message = ' '.join(str(arg) for arg in args)
         print(f"[LOG] {message}")
 
     @staticmethod
-    def debug(message):
+    def debug(*args):
         '''Write a debug message to stdout'''
+        message = ' '.join(str(arg) for arg in args)
         print(f"[DEBUG] {message}")
 
     @staticmethod
-    def error(message):
+    def error(*args):
         '''Write an error message to stderr'''
         import sys
+        message = ' '.join(str(arg) for arg in args)
         print(f"[ERROR] {message}", file=sys.stderr)
 
 

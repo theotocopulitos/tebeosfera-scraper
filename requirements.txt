@@ -3,6 +3,4 @@
 
 # Required for GUI
 Pillow>=8.0.0
-
-# No additional dependencies required for CLI
-# All parsing is done with built-in Python modules
+rarfile>=4.0

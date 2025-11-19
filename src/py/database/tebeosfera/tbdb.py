@@ -36,39 +36,132 @@ class TebeoSferaDB(object):
         # Perform search
         html_content = self.connection.search(search_terms)
         if not html_content:
-            log.debug("No results from TebeoSfera search")
+            log.debug("No results from TebeoSfera search - HTML content is None")
             return []
+
+        # Log HTML content info
+        html_length = len(html_content) if html_content else 0
+        log.debug("HTML content received: {0} bytes".format(html_length))
+        
+        # Save HTML to file for debugging
+        if html_content:
+            try:
+                import tempfile
+                import os
+                debug_file = os.path.join(tempfile.gettempdir(), 'tebeosfera_search_debug.html')
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                log.debug("HTML saved to: {0}".format(debug_file))
+            except Exception as e:
+                log.debug("Could not save HTML debug file: {0}".format(str(e)))
+        
+        # Log a sample of the HTML to see what we're getting
+        if html_content:
+            sample = html_content[:2000] if len(html_content) > 2000 else html_content
+            log.debug("HTML sample (first 2000 chars): ", sample[:2000])
+            
+            # Check for common patterns that indicate results
+            has_numeros = '/numeros/' in html_content
+            has_colecciones = '/colecciones/' in html_content
+            has_results_div = 'resultados' in html_content.lower() or 'resultado' in html_content.lower()
+            log.debug("HTML contains /numeros/: {0}, /colecciones/: {1}, 'resultados': {2}".format(
+                has_numeros, has_colecciones, has_results_div))
+            
+            # Count actual occurrences
+            numeros_count = html_content.count('/numeros/')
+            colecciones_count = html_content.count('/colecciones/')
+            log.debug("Count: /numeros/ appears {0} times, /colecciones/ appears {1} times".format(
+                numeros_count, colecciones_count))
 
         # Parse search results
         results = self.parser.parse_search_results(html_content)
+        log.debug("Parser found {0} total results (issues + collections)".format(len(results)))
+        
+        # Log breakdown by type
+        issues_count = sum(1 for r in results if r.get('type') == 'issue')
+        collections_count = sum(1 for r in results if r.get('type') == 'collection')
+        log.debug("Breakdown: {0} issues, {1} collections".format(issues_count, collections_count))
+        
+        # Log first few results for debugging
+        if results:
+            log.debug("First 5 results:")
+            for i, result in enumerate(results[:5]):
+                log.debug("  [{0}] type={1}, slug={2}, title={3}, series={4}".format(
+                    i+1, result.get('type'), result.get('slug'), 
+                    result.get('title', 'N/A')[:50], result.get('series_name', 'N/A')[:30]))
 
         series_refs = []
-        seen_slugs = set()
-
-        # Convert collection results to SeriesRef objects
+        seen_series = {}  # Map series_name -> SeriesRef data
+        
+        # Group issues by series name, and process collections
         for result in results:
             if result['type'] == 'collection':
                 slug = result['slug']
-                if slug not in seen_slugs:
-                    seen_slugs.add(slug)
-
+                series_name = result.get('series_name') or result.get('title', slug)
+                
+                if series_name not in seen_series:
                     # Get thumbnail URL and ensure it's absolute
                     thumb_url = result.get('thumb_url')
                     if thumb_url and not thumb_url.startswith('http'):
                         thumb_url = 'https://www.tebeosfera.com' + thumb_url
 
-                    # Create SeriesRef with collection slug as key
-                    series_ref = SeriesRef(
-                        series_key=slug,
-                        series_name_s=result['title'],
-                        volume_year_n=-1,  # Will be populated when querying series details
-                        publisher_s='',
-                        issue_count_n=0,
-                        thumb_url_s=thumb_url
-                    )
-                    series_refs.append(series_ref)
+                    seen_series[series_name] = {
+                        'series_key': slug,
+                        'series_name': series_name,
+                        'thumb_url': thumb_url,
+                        'issue_count': 0,
+                        'type': 'collection'
+                    }
+            
+            elif result['type'] == 'issue':
+                series_name = result.get('series_name')
+                if not series_name:
+                    continue
+                
+                if series_name not in seen_series:
+                    # Get thumbnail URL from first issue
+                    thumb_url = result.get('thumb_url')
+                    if thumb_url and not thumb_url.startswith('http'):
+                        thumb_url = 'https://www.tebeosfera.com' + thumb_url
+                    
+                    # Create a series key from the series name
+                    series_key = series_name.lower().replace(' ', '_').replace(',', '').replace(':', '')
+                    series_key = ''.join(c for c in series_key if c.isalnum() or c in '_-')
+                    
+                    seen_series[series_name] = {
+                        'series_key': series_key,
+                        'series_name': series_name,
+                        'thumb_url': thumb_url,
+                        'issue_count': 0,
+                        'type': 'issue'
+                    }
+                
+                seen_series[series_name]['issue_count'] += 1
+                
+                # Update thumbnail if this one is better (has http)
+                if result.get('thumb_url') and result.get('thumb_url').startswith('http'):
+                    seen_series[series_name]['thumb_url'] = result.get('thumb_url')
 
-        log.debug("Found {0} series in TebeoSfera".format(len(series_refs)))
+        # Convert to SeriesRef objects
+        for series_name, series_data in seen_series.items():
+            thumb_url = series_data.get('thumb_url', '')
+            if thumb_url and not thumb_url.startswith('http'):
+                thumb_url = 'https://www.tebeosfera.com' + thumb_url
+            
+            series_ref = SeriesRef(
+                series_key=series_data['series_key'],
+                series_name_s=series_data['series_name'],
+                volume_year_n=-1,  # Will be populated when querying series details
+                publisher_s='',
+                issue_count_n=series_data['issue_count'],
+                thumb_url_s=thumb_url
+            )
+            series_refs.append(series_ref)
+
+        log.debug("Found {0} series in TebeoSfera (from {1} results: {2} issues, {3} collections)".format(
+            len(series_refs), len(results),
+            sum(1 for r in results if r.get('type') == 'issue'),
+            sum(1 for r in results if r.get('type') == 'collection')))
         return series_refs
 
     def query_series_details(self, series_ref):
@@ -324,7 +417,7 @@ class TebeoSferaDB(object):
         # Extract URL from ref or use directly
         if hasattr(ref_or_url, 'thumb_url_s'):
             url = ref_or_url.thumb_url_s
-        elif isinstance(ref_or_url, basestring):
+        elif isinstance(ref_or_url, str):
             url = ref_or_url
         else:
             log.debug("Invalid ref or URL for image query")
@@ -348,7 +441,7 @@ class TebeoSferaDB(object):
         # Extract URL
         if hasattr(ref_or_url, 'thumb_url_s'):
             url = ref_or_url.thumb_url_s
-        elif isinstance(ref_or_url, basestring):
+        elif isinstance(ref_or_url, str):
             url = ref_or_url
         else:
             return False

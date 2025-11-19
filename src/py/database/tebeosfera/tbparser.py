@@ -345,75 +345,179 @@ class TebeoSferaParser(object):
         Parse search results page to extract issue links.
 
         html_content: HTML string from search results page
-        Returns: List of dictionaries with {slug, title, url, thumb_url}
+        Returns: List of dictionaries with {slug, title, url, thumb_url, series_name, type}
         '''
+        if not html_content:
+            return []
+
         results = []
+        from utils_compat import log
 
-        # Extract issue links with thumbnails
-        # Look for pattern: <a href="/numeros/SLUG.html">...<img src="THUMB_URL">...
-        # We'll parse the HTML to find these connections
-
-        # First, extract all img tags with their URLs
-        img_pattern = r'<img[^>]*src="([^"]*T3_numeros[^"]*)"[^>]*>'
-        images = {}
-        for img_match in re.finditer(img_pattern, html_content, re.IGNORECASE):
-            img_url = img_match.group(1)
-            # Map position to URL for matching with links nearby
-            images[img_match.start()] = img_url
-
-        # Extract issue links
-        pattern = r'href="(/numeros/([^"]+)\.html/?)"[^>]*>([^<]*)</a>'
-        matches = re.finditer(pattern, html_content, re.IGNORECASE)
-
-        for match in matches:
-            url = match.group(1)
-            slug = match.group(2)
-            title_html = match.group(3)
-            title = self._clean_text(title_html)
-
-            # Find closest image before this link (within 1000 chars)
-            thumb_url = None
-            match_pos = match.start()
-            for img_pos, img_url in images.items():
-                if img_pos < match_pos and match_pos - img_pos < 1000:
-                    thumb_url = img_url
-                    # Get the closest one
+        # Parse each result line: <div class="linea_resultados">...</div>
+        # This is the most reliable way to get complete result information
+        # Need to match the opening div and find the matching closing div (handling nested divs)
+        lineas = []
+        pos = 0
+        while True:
+            # Find next opening div with class="linea_resultados"
+            start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
+            if not start_match:
+                break
+            
+            start_pos = pos + start_match.end()
+            # Find matching closing </div> by counting nested divs
+            depth = 1
+            search_pos = start_pos
+            end_pos = None
+            
+            while depth > 0 and search_pos < len(html_content):
+                # Look for next <div or </div>
+                next_tag = re.search(r'</?div[^>]*>', html_content[search_pos:], re.IGNORECASE)
+                if not next_tag:
                     break
+                
+                tag_pos = search_pos + next_tag.start()
+                tag = next_tag.group(0).lower()
+                
+                if tag.startswith('</div'):
+                    depth -= 1
+                    if depth == 0:
+                        end_pos = tag_pos
+                        break
+                elif tag.startswith('<div'):
+                    depth += 1
+                
+                search_pos = tag_pos + next_tag.end()
+            
+            if end_pos:
+                linea_content = html_content[start_pos:end_pos]
+                lineas.append((start_pos, end_pos, linea_content))
+                pos = end_pos + 6  # Move past </div>
+            else:
+                # Fallback: use simple pattern if matching fails
+                break
+        
+        # Fallback to simple pattern if nested matching failed
+        if not lineas:
+            linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
+            simple_lineas = list(re.finditer(linea_pattern, html_content, re.DOTALL | re.IGNORECASE))
+            lineas = [(m.start(), m.end(), m.group(1)) for m in simple_lineas]
+        
+        log.debug("Found {0} result lines (linea_resultados)".format(len(lineas)))
+        
+        for linea_info in lineas:
+            if isinstance(linea_info, tuple):
+                _, _, linea_content = linea_info
+            else:
+                linea_content = linea_info.group(1)
+            
+            # Extract image URL (thumbnail) - look for img with id="img_principal"
+            # The img can be directly in the div or inside an <a> tag
+            img_match = re.search(r'<img[^>]*id="img_principal"[^>]*src="([^"]+)"', linea_content, re.IGNORECASE)
+            thumb_url = img_match.group(1) if img_match else None
+            if thumb_url and not thumb_url.startswith('http'):
+                thumb_url = 'https://www.tebeosfera.com' + thumb_url
+            
+            # Extract issue link and slug - need to handle nested tags in link text
+            link_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+            if not link_match:
+                # Try collection link
+                link_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                if link_match:
+                    url = link_match.group(1)
+                    slug = link_match.group(2)
+                    # Extract link text (everything between <a> and </a>, handling nested tags)
+                    link_start = link_match.end()
+                    link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+                    if link_end_match:
+                        link_text = linea_content[link_start:link_start+link_end_match.start()]
+                        title = self._clean_text(self._strip_tags(link_text))
+                        
+                        results.append({
+                            'slug': slug,
+                            'title': title,
+                            'url': url,
+                            'thumb_url': thumb_url,
+                            'series_name': title,  # For collections, title is the series name
+                            'type': 'collection'
+                        })
+                continue
+            
+            url = link_match.group(1)
+            slug = link_match.group(2)
+            
+            # Extract link text (everything between <a> and </a>, handling nested tags)
+            link_start = link_match.end()
+            link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+            if not link_end_match:
+                continue
+            link_text = linea_content[link_start:link_start+link_end_match.start()]
+            
+            # Extract full title from link text
+            full_title = self._clean_text(self._strip_tags(link_text))
+            
+            # Parse series name from format: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
+            # Or: "SERIE (AÑO, EDITORIAL) NÚMERO"
+            # Or: "SERIE (AÑO, EDITORIAL) : TÍTULO"
+            # Or: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
+            series_name = None
+            issue_title = None
+            
+            # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
+            series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
+            if series_match:
+                series_name = self._clean_text(series_match.group(1))
+                issue_title = self._clean_text(series_match.group(3))
+            else:
+                # Try pattern: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
+                series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
+                if series_match:
+                    series_name = self._clean_text(series_match.group(1))
+                    issue_title = self._clean_text(series_match.group(4))
+                else:
+                    # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO"
+                    series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]+)$', full_title)
+                    if series_match:
+                        series_name = self._clean_text(series_match.group(1))
+                        issue_title = self._clean_text(series_match.group(2))
+                    else:
+                        # Try pattern: "SERIE (AÑO, EDITORIAL) : TÍTULO"
+                        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*:\s*(.+)$', full_title)
+                        if series_match:
+                            series_name = self._clean_text(series_match.group(1))
+                            issue_title = self._clean_text(series_match.group(2))
+                        else:
+                            # Try pattern: "SERIE -SUBTÍTULO- NÚMERO"
+                            series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]+)$', full_title)
+                            if series_match:
+                                series_name = self._clean_text(series_match.group(1))
+                                issue_title = self._clean_text(series_match.group(3))
+                            else:
+                                # Fallback: use first part before parentheses or dash
+                                series_match = re.match(r'^(.+?)(?:\s*\(|\s*-)', full_title)
+                                if series_match:
+                                    series_name = self._clean_text(series_match.group(1))
+                                else:
+                                    # Last resort: use slug to guess series name
+                                    # Take first 2-3 parts of slug as series name
+                                    slug_parts = slug.split('_')
+                                    if len(slug_parts) >= 2:
+                                        series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
+                                    else:
+                                        series_name = slug.split('_')[0].replace('_', ' ').title()
+            
+            if series_name:
+                results.append({
+                    'slug': slug,
+                    'title': full_title,
+                    'url': url,
+                    'thumb_url': thumb_url,
+                    'series_name': series_name.strip(),
+                    'issue_title': issue_title.strip() if issue_title else None,
+                    'type': 'issue'
+                })
 
-            results.append({
-                'slug': slug,
-                'title': title if title else slug.replace('_', ' '),
-                'url': url,
-                'thumb_url': thumb_url,
-                'type': 'issue'
-            })
-
-        # Extract collection links with thumbnails
-        pattern = r'href="(/colecciones/([^"]+)\.html)"[^>]*>([^<]*)</a>'
-        matches = re.finditer(pattern, html_content, re.IGNORECASE)
-
-        for match in matches:
-            url = match.group(1)
-            slug = match.group(2)
-            title_html = match.group(3)
-            title = self._clean_text(title_html)
-
-            # Find closest image before this link (within 1000 chars)
-            thumb_url = None
-            match_pos = match.start()
-            for img_pos, img_url in images.items():
-                if img_pos < match_pos and match_pos - img_pos < 1000:
-                    thumb_url = img_url
-                    break
-
-            results.append({
-                'slug': slug,
-                'title': title if title else slug.replace('_', ' '),
-                'url': url,
-                'thumb_url': thumb_url,
-                'type': 'collection'
-            })
-
+        log.debug("Parser returning {0} total results".format(len(results)))
         return results
 
     def _parse_date(self, date_string):
@@ -490,14 +594,14 @@ class TebeoSferaParser(object):
         Returns: Text with entities decoded
         '''
         # Decode numeric entities
-        text = re.sub(r'&#(\d+);', lambda m: unichr(int(m.group(1))), text)
-        text = re.sub(r'&#x([0-9a-fA-F]+);', lambda m: unichr(int(m.group(1), 16)), text)
+        text = re.sub(r'&#(\d+);', lambda m: chr(int(m.group(1))), text)
+        text = re.sub(r'&#x([0-9a-fA-F]+);', lambda m: chr(int(m.group(1), 16)), text)
 
         # Decode named entities
         def replace_entity(match):
             entity = match.group(1)
             if entity in name2codepoint:
-                return unichr(name2codepoint[entity])
+                return chr(name2codepoint[entity])
             return match.group(0)
 
         text = re.sub(r'&([a-zA-Z]+);', replace_entity, text)

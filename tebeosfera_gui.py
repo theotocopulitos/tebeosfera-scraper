@@ -21,6 +21,9 @@ import sys
 import os
 import threading
 import queue
+import re
+import shutil
+from time import strftime
 
 # Add src/py to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
@@ -45,6 +48,53 @@ except ImportError as e:
     print("Error importing modules: {0}".format(e))
     sys.exit(1)
 
+try:
+    import rarfile
+except ImportError:
+    rarfile = None
+
+# Compatibility for Image.ANTIALIAS
+try:
+    from PIL.Image import Resampling
+    ANTIALIAS = Resampling.LANCZOS
+except ImportError:
+    # Pillow < 10.0.0
+    try:
+        ANTIALIAS = Image.ANTIALIAS
+    except AttributeError:
+        ANTIALIAS = Image.LANCZOS
+
+
+def extract_title_from_filename(filename):
+    '''
+    Extract series title from filename using improved parsing.
+    Returns the extracted title string.
+    '''
+    # Remove extension
+    name = os.path.splitext(filename)[0]
+    
+    # Remove common patterns
+    # Remove leading numbers (reading order)
+    name = re.sub(r'^\d+[.\s\-_]+', '', name)
+    
+    # Remove issue numbers at the end (various formats)
+    name = re.sub(r'[#\s]*\d+[.\d]*\s*$', '', name)
+    name = re.sub(r'[#\s]*\d+[.\d]*\s*[-_]\s*.*$', '', name)
+    
+    # Remove year patterns
+    name = re.sub(r'\b(19|20)\d{2}\b', '', name)
+    
+    # Replace separators with spaces
+    name = re.sub(r'[_\-.]', ' ', name)
+    
+    # Remove multiple spaces
+    name = re.sub(r'\s+', ' ', name)
+    
+    # Remove trailing/leading separators and numbers
+    name = name.strip(' ,-_0123456789')
+    
+    return name.strip() if name.strip() else os.path.splitext(filename)[0]
+
 
 class ImageComparator(object):
     '''Compares images to find visual similarity'''
@@ -53,7 +103,7 @@ class ImageComparator(object):
     def calculate_dhash(image, hash_size=8):
         '''Calculate difference hash (dHash) for an image'''
         # Resize to hash_size + 1 width, hash_size height
-        resized = image.convert('L').resize((hash_size + 1, hash_size), Image.ANTIALIAS)
+        resized = image.convert('L').resize((hash_size + 1, hash_size), ANTIALIAS)
         pixels = list(resized.getdata())
 
         # Calculate differences between adjacent pixels
@@ -111,8 +161,8 @@ class ImageComparator(object):
 
         try:
             # Convert to RGB and resize to same size
-            img1 = image1.convert('RGB').resize((100, 100), Image.ANTIALIAS)
-            img2 = image2.convert('RGB').resize((100, 100), Image.ANTIALIAS)
+            img1 = image1.convert('RGB').resize((100, 100), ANTIALIAS)
+            img2 = image2.convert('RGB').resize((100, 100), ANTIALIAS)
 
             # Get histograms
             h1 = img1.histogram()
@@ -174,26 +224,50 @@ class ComicFile(object):
         self.metadata = None
         self.selected_issue = None
         self.status = 'pending'  # pending, searching, selected, completed, error
+        self.error_msg = None
 
     def extract_cover(self):
         '''Extract the first page (cover) from the comic file'''
-        if not zipfile.is_zipfile(self.filepath):
+        self.error_msg = None
+        
+        # Check for CBR first
+        if self.filepath.lower().endswith('.cbr'):
+            if not rarfile:
+                self.error_msg = "Módulo 'rarfile' no instalado.\nPor favor instale rarfile."
+                return None
+
+        if not self.filepath.lower().endswith('.cbr') and not zipfile.is_zipfile(self.filepath):
+            self.error_msg = "Archivo inválido o corrupto"
             return None
 
         try:
-            with zipfile.ZipFile(self.filepath, 'r') as zf:
-                # Get list of image files
-                images = [f for f in zf.namelist()
-                         if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
-                images.sort()
+            if self.filepath.lower().endswith('.cbr'):
+                with rarfile.RarFile(self.filepath) as rf:
+                    # Get list of image files
+                    images = [f for f in rf.namelist()
+                             if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
+                    images.sort()
 
-                if images:
-                    # Read first image
-                    image_data = zf.read(images[0])
-                    self.cover_image = Image.open(BytesIO(image_data))
-                    return self.cover_image
+                    if images:
+                        # Read first image
+                        image_data = rf.read(images[0])
+                        self.cover_image = Image.open(BytesIO(image_data))
+                        return self.cover_image
+            else:
+                with zipfile.ZipFile(self.filepath, 'r') as zf:
+                    # Get list of image files
+                    images = [f for f in zf.namelist()
+                             if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
+                    images.sort()
+
+                    if images:
+                        # Read first image
+                        image_data = zf.read(images[0])
+                        self.cover_image = Image.open(BytesIO(image_data))
+                        return self.cover_image
         except Exception as e:
             print("Error extracting cover from {0}: {1}".format(self.filename, e))
+            self.error_msg = "Error extrayendo portada: {0}".format(str(e))
             return None
 
 
@@ -228,6 +302,49 @@ class TebeoSferaGUI(tk.Tk):
 
         # Bind close event
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Check dependencies after UI is ready
+        self.after(500, self._check_dependencies)
+
+    def _check_dependencies(self):
+        '''Check for optional dependencies and system tools'''
+        # Check for rarfile and unrar
+        if rarfile:
+            # Check if unrar executable is in PATH
+            # rarfile needs 'unrar' or 'rar' command line tool
+            has_unrar = shutil.which("unrar") or shutil.which("rar")
+            
+            # On Windows, sometimes it's just 'UnRAR.exe' but checking 'unrar' works if in PATH
+            if not has_unrar and os.name == 'nt':
+                # Common default paths check (optional, but helpful)
+                common_paths = [
+                    r"C:\Program Files\WinRAR\UnRAR.exe",
+                    r"C:\Program Files (x86)\WinRAR\UnRAR.exe"
+                ]
+                for path in common_paths:
+                    if os.path.exists(path):
+                        # If found in standard location but not in PATH, we could potentially configure rarfile
+                        # rarfile.UNRAR_TOOL = path
+                        # But better to warn user to add to PATH or let them know
+                        has_unrar = True # It exists, just not in PATH. rarfile might not find it by default.
+                        self._log(f"ℹ️ UnRAR detectado en {path} (no en PATH)")
+                        # We could try to set it:
+                        rarfile.UNRAR_TOOL = path
+                        break
+
+            if not has_unrar:
+                msg = (
+                    "Soporte CBR limitado:\n"
+                    "El módulo 'rarfile' está instalado, pero no se encontró 'unrar' o 'rar'.\n\n"
+                    "Para abrir archivos .cbr, necesita:\n"
+                    "1. Descargar UnRAR (o WinRAR)\n"
+                    "2. Añadir la carpeta de instalación al PATH del sistema\n\n"
+                    "Los archivos .cbz funcionarán correctamente."
+                )
+                self._log("⚠️ Advertencia: 'unrar' no encontrado en el sistema.")
+                messagebox.showwarning("Dependencia faltante", msg)
+            else:
+                self._log("✅ Soporte CBR activo (rarfile + unrar detectado)")
 
     def _create_menu(self):
         '''Create menu bar'''
@@ -276,12 +393,16 @@ class TebeoSferaGUI(tk.Tk):
     def _create_main_panel(self):
         '''Create main content area'''
         # Main container with panedwindow for resizable split
-        paned = tk.PanedWindow(self, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        paned = tk.PanedWindow(self, orient=tk.VERTICAL, sashrelief=tk.RAISED)
         paned.pack(fill=tk.BOTH, expand=True)
+        
+        # Top panel - Main content
+        top_paned = tk.PanedWindow(paned, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        paned.add(top_paned, minsize=400)
 
         # Left panel - File list
-        left_frame = tk.Frame(paned)
-        paned.add(left_frame, minsize=300)
+        left_frame = tk.Frame(top_paned)
+        top_paned.add(left_frame, minsize=300)
 
         tk.Label(left_frame, text="Comics encontrados:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
 
@@ -299,8 +420,8 @@ class TebeoSferaGUI(tk.Tk):
         scrollbar.config(command=self.file_listbox.yview)
 
         # Right panel - Preview and details
-        right_frame = tk.Frame(paned)
-        paned.add(right_frame, minsize=400)
+        right_frame = tk.Frame(top_paned)
+        top_paned.add(right_frame, minsize=400)
 
         tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
 
@@ -324,6 +445,36 @@ class TebeoSferaGUI(tk.Tk):
 
         tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", command=self._search_current).pack(side=tk.LEFT, padx=2)
         tk.Button(button_frame, text="💾 Generar ComicInfo.xml", command=self._generate_xml_current).pack(side=tk.LEFT, padx=2)
+        
+        # Bottom panel - Log
+        log_frame = tk.Frame(paned)
+        paned.add(log_frame, minsize=150)
+        
+        log_header = tk.Frame(log_frame)
+        log_header.pack(fill=tk.X, padx=5, pady=(5, 0))
+        
+        tk.Label(log_header, text="Log:", font=('Arial', 10, 'bold')).pack(side=tk.LEFT)
+        tk.Button(log_header, text="Limpiar", command=self._clear_log, width=8).pack(side=tk.RIGHT, padx=5)
+        tk.Button(log_header, text="Guardar", command=self._save_log, width=8).pack(side=tk.RIGHT, padx=5)
+        
+        # Log text area with scrollbar
+        log_text_frame = tk.Frame(log_frame)
+        log_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        log_scrollbar = tk.Scrollbar(log_text_frame)
+        log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.log_text = tk.Text(log_text_frame, height=8, wrap=tk.WORD, 
+                                yscrollcommand=log_scrollbar.set,
+                                font=('Consolas', 9), bg='#f5f5f5')
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        log_scrollbar.config(command=self.log_text.yview)
+        
+        # Make log read-only
+        self.log_text.config(state=tk.DISABLED)
+        
+        # Initialize log
+        self._log("🚀 TebeoSfera Scraper iniciado")
 
     def _create_status_bar(self):
         '''Create status bar'''
@@ -414,12 +565,13 @@ class TebeoSferaGUI(tk.Tk):
         cover = comic.extract_cover()
         if cover:
             # Resize to fit
-            cover.thumbnail((400, 600), Image.ANTIALIAS)
+            cover.thumbnail((400, 600), ANTIALIAS)
             photo = ImageTk.PhotoImage(cover)
             self.cover_label.config(image=photo, text='')
             self.cover_label.image = photo  # Keep reference
         else:
-            self.cover_label.config(image='', text='No se pudo extraer la portada')
+            msg = comic.error_msg if comic.error_msg else 'No se pudo extraer la portada'
+            self.cover_label.config(image='', text=msg)
 
         # Show details
         details = "Archivo: {0}\n".format(comic.filename)
@@ -461,15 +613,83 @@ class TebeoSferaGUI(tk.Tk):
         try:
             xml_content = self.xml_generator.generate_xml(comic.metadata)
 
-            # Inject into CBZ
-            self._inject_xml(comic.filepath, xml_content)
+            # Check if it's CBR
+            if comic.filepath.lower().endswith('.cbr'):
+                if not rarfile:
+                    messagebox.showerror("Error", "No se puede procesar CBR sin el módulo 'rarfile'")
+                    return
 
-            comic.status = 'completed'
-            messagebox.showinfo("Éxito", "ComicInfo.xml generado e inyectado correctamente")
+                if messagebox.askyesno("Confirmar conversión", 
+                                      "El archivo es CBR (RAR). Para inyectar el XML es necesario convertirlo a CBZ (ZIP).\n\n"
+                                      "¿Desea convertirlo ahora?\n(Se creará un nuevo archivo .cbz y se eliminará el .cbr)"):
+                    new_path = self._convert_cbr_to_cbz(comic.filepath)
+                    if new_path:
+                        comic.filepath = new_path
+                        comic.filename = os.path.basename(new_path)
+                        self._inject_xml(comic.filepath, xml_content)
+                        # Update listbox
+                        self.file_listbox.delete(self.current_comic_index)
+                        self.file_listbox.insert(self.current_comic_index, comic.filename)
+                        self.file_listbox.selection_set(self.current_comic_index)
+                        
+                        comic.status = 'completed'
+                        messagebox.showinfo("Éxito", "Conversión a CBZ e inyección de XML completada")
+                    else:
+                        comic.status = 'error'
+                        messagebox.showerror("Error", "Falló la conversión a CBZ")
+                else:
+                    return
+            else:
+                # Inject into CBZ
+                self._inject_xml(comic.filepath, xml_content)
+                comic.status = 'completed'
+                messagebox.showinfo("Éxito", "ComicInfo.xml generado e inyectado correctamente")
 
         except Exception as e:
             comic.status = 'error'
             messagebox.showerror("Error", "Error generando XML: {0}".format(e))
+
+    def _convert_cbr_to_cbz(self, cbr_path):
+        '''Convert CBR to CBZ'''
+        import shutil
+        
+        cbz_path = os.path.splitext(cbr_path)[0] + '.cbz'
+        temp_dir = tempfile.mkdtemp()
+        
+        try:
+            self._update_status("Convirtiendo CBR a CBZ...")
+            
+            # Extract CBR
+            with rarfile.RarFile(cbr_path) as rf:
+                rf.extractall(temp_dir)
+                
+            # Create CBZ
+            with zipfile.ZipFile(cbz_path, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, temp_dir)
+                        zip_out.write(file_path, arcname)
+            
+            # Delete original CBR if successful
+            if os.path.exists(cbz_path):
+                os.remove(cbr_path)
+                return cbz_path
+                
+            return None
+            
+        except Exception as e:
+            print("Error converting CBR to CBZ: {0}".format(e))
+            # Cleanup incomplete CBZ
+            if os.path.exists(cbz_path):
+                os.remove(cbz_path)
+            return None
+            
+        finally:
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
 
     def _inject_xml(self, cbz_path, xml_content):
         '''Inject ComicInfo.xml into CBZ file'''
@@ -618,6 +838,43 @@ class TebeoSferaGUI(tk.Tk):
             self.db.close()
             self.destroy()
 
+    def _log(self, message):
+        '''Add a message to the log'''
+        timestamp = strftime('%H:%M:%S')
+        log_entry = f"[{timestamp}] {message}\n"
+        
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.insert(tk.END, log_entry)
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        
+        # Also print to console
+        print(log_entry.strip())
+
+    def _clear_log(self):
+        '''Clear the log'''
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete('1.0', tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        self._log("Log limpiado")
+
+    def _save_log(self):
+        '''Save log to file'''
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            title="Guardar log"
+        )
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(self.log_text.get('1.0', tk.END))
+                self._log(f"✅ Log guardado en: {filename}")
+                messagebox.showinfo("Éxito", f"Log guardado en:\n{filename}")
+            except Exception as e:
+                self._log(f"❌ Error guardando log: {str(e)}")
+                messagebox.showerror("Error", f"Error guardando log:\n{str(e)}")
+
 
 class SearchDialog(tk.Toplevel):
     '''Dialog for searching and selecting issues from TebeoSfera'''
@@ -629,6 +886,7 @@ class SearchDialog(tk.Toplevel):
         self.geometry("1000x700")
         self.transient(parent)
 
+        self.parent = parent  # Store parent reference for logging
         self.comic = comic
         self.db = db
         self.search_results = []
@@ -714,21 +972,95 @@ class SearchDialog(tk.Toplevel):
         self.status_label = tk.Label(self, text="", fg='blue')
         self.status_label.pack(fill=tk.X, padx=10)
 
+    def _log(self, message):
+        '''Add a message to the log (delegates to parent if available)'''
+        if hasattr(self, 'parent') and hasattr(self.parent, '_log'):
+            self.parent._log(message)
+        else:
+            print(f"[LOG] {message}")
+
+    def _format_request_info(self, info):
+        '''Format HTTP request metadata for display/logging'''
+        if not info:
+            return ''
+
+        parts = []
+        url = info.get('url')
+        if url:
+            parts.append(f"URL: {url}")
+
+        status = info.get('status')
+        if status is not None:
+            parts.append(f"HTTP {status}")
+
+        bytes_count = info.get('bytes')
+        if bytes_count:
+            parts.append(f"{bytes_count:,} bytes")
+
+        elapsed = info.get('elapsed_ms')
+        if elapsed:
+            parts.append(f"{elapsed:.0f} ms")
+
+        return " | ".join(parts)
+
+    def _log_request_info(self, context, info):
+        '''Log formatted request metadata'''
+        info_str = self._format_request_info(info)
+        if info_str:
+            self._log(f"{context} {info_str}")
+        else:
+            self._log(f"{context} (sin metadatos de URL)")
+
     def _auto_search(self):
-        '''Auto-search based on filename'''
+        '''Auto-search based on filename with edit option'''
         # Extract series name from filename
         filename = self.comic.filename
-        # Remove extension
-        name = os.path.splitext(filename)[0]
-        # Remove common patterns like numbers, dates, etc.
-        import re
-        name = re.sub(r'[_\-.]', ' ', name)
-        name = re.sub(r'\d+', '', name)
-        name = name.strip()
-
-        if name:
-            self.search_entry.insert(0, name)
-            self._search()
+        extracted_title = extract_title_from_filename(filename)
+        
+        # Show edit dialog
+        edit_dialog = tk.Toplevel(self)
+        edit_dialog.title("Editar título de búsqueda")
+        edit_dialog.geometry("500x150")
+        edit_dialog.transient(self)
+        edit_dialog.grab_set()
+        
+        # Center the dialog
+        edit_dialog.update_idletasks()
+        x = (edit_dialog.winfo_screenwidth() // 2) - (500 // 2)
+        y = (edit_dialog.winfo_screenheight() // 2) - (150 // 2)
+        edit_dialog.geometry(f"500x150+{x}+{y}")
+        
+        tk.Label(edit_dialog, text="Título extraído del archivo:", 
+                 font=('Arial', 9)).pack(pady=(10, 5), padx=10, anchor=tk.W)
+        
+        entry_var = tk.StringVar(value=extracted_title)
+        entry = tk.Entry(edit_dialog, textvariable=entry_var, width=60, font=('Arial', 10))
+        entry.pack(padx=10, pady=5, fill=tk.X)
+        entry.select_range(0, tk.END)
+        entry.focus()
+        
+        def on_ok():
+            title = entry_var.get().strip()
+            if title:
+                self.search_entry.delete(0, tk.END)
+                self.search_entry.insert(0, title)
+                edit_dialog.destroy()
+                self._search()
+            else:
+                messagebox.showwarning("Advertencia", "El título no puede estar vacío")
+        
+        def on_cancel():
+            edit_dialog.destroy()
+        
+        button_frame = tk.Frame(edit_dialog)
+        button_frame.pack(pady=10)
+        
+        tk.Button(button_frame, text="Buscar", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancelar", command=on_cancel, width=12).pack(side=tk.LEFT, padx=5)
+        
+        # Bind Enter key
+        entry.bind('<Return>', lambda e: on_ok())
+        edit_dialog.bind('<Escape>', lambda e: on_cancel())
 
     def _search(self):
         '''Perform search'''
@@ -743,35 +1075,85 @@ class SearchDialog(tk.Toplevel):
 
         self.results_listbox.delete(0, tk.END)
         self.results_listbox.insert(tk.END, "Buscando...")
-        self.status_label.config(text="Buscando en TebeoSfera...")
+        self.status_label.config(text="Conectando con TebeoSfera...")
         self.update()
+        
+        # Log the search
+        self._log(f"🔍 Iniciando búsqueda: '{query}'")
 
         # Perform search in background
         def search_thread():
-            results = self.db.search_series(query)
+            try:
+                # Update status
+                def update_status(msg):
+                    self.after(0, lambda: self.status_label.config(text=msg))
+                    self.after(0, lambda: self._log(msg))
+                
+                update_status("Conectando con TebeoSfera...")
+                
+                # Get URL before search
+                search_url = None
+                if hasattr(self.db, 'connection'):
+                    # Build expected URL
+                    from urllib.parse import quote
+                    encoded_query = quote(query.replace(' ', '_'), safe='_')
+                    search_url = f"https://www.tebeosfera.com/buscador/{encoded_query}/"
+                    self._log(f"🌐 URL de búsqueda: {search_url}")
+                
+                results = self.db.search_series(query)
+                
+                request_info = {}
+                if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
+                    request_info = self.db.connection.get_request_info() or {}
+                    if request_info:
+                        self._log(f"📡 Respuesta HTTP: {request_info.get('status_code', 'N/A')} - {request_info.get('size_bytes', 0)} bytes")
+                        if request_info.get('url'):
+                            self._log(f"🔗 URL final: {request_info.get('url')}")
 
-            def update_results():
-                self.results_listbox.delete(0, tk.END)
-                self.search_results = results
+                update_status(f"Búsqueda completada: {len(results)} resultados encontrados")
 
-                if not results:
-                    self.results_listbox.insert(tk.END, "Sin resultados")
-                    self.status_label.config(text="Sin resultados")
-                    return
+                def update_results(request_info=request_info):
+                    self.results_listbox.delete(0, tk.END)
+                    self.search_results = results
 
-                # Display results first
-                for result in results:
-                    self.results_listbox.insert(tk.END, result.series_name_s)
+                    info_line = self._format_request_info(request_info)
+                    if info_line:
+                        self._log_request_info("🌐 Solicitud completada:", request_info)
 
-                self.status_label.config(text="{0} series encontradas - Comparando portadas...".format(len(results)))
+                    if not results:
+                        self.results_listbox.insert(tk.END, "Sin resultados")
+                        status_msg = "Sin resultados"
+                        if info_line:
+                            status_msg += f"\n{info_line}"
+                        self.status_label.config(text=status_msg)
+                        self._log("❌ Sin resultados encontrados")
+                        return
 
-                # Start image comparison if comic has a cover
-                if self.comic.cover_image:
-                    self._compare_covers_with_results(results)
-                else:
-                    self.status_label.config(text="{0} series encontradas".format(len(results)))
+                    # Display results first
+                    for result in results:
+                        self.results_listbox.insert(tk.END, result.series_name_s)
 
-            self.after(0, update_results)
+                    status_text = f"{len(results)} series encontradas - Comparando portadas..."
+                    if info_line:
+                        status_text += f"\n{info_line}"
+                    self.status_label.config(text=status_text)
+                    self._log(f"✅ {len(results)} series encontradas")
+                    sample_names = ", ".join(result.series_name_s for result in results[:5])
+                    self._log(f"📚 Primeros resultados ({min(len(results), 5)}/{len(results)}): {sample_names}")
+
+                    # Start image comparison if comic has a cover
+                    if self.comic.cover_image:
+                        self._compare_covers_with_results(results)
+                    else:
+                        self.status_label.config(text=f"{len(results)} series encontradas")
+                        self._log("ℹ️ Sin portada disponible para comparación")
+
+                self.after(0, update_results)
+            except Exception as e:
+                error_msg = f"Error en búsqueda: {str(e)}"
+                self.after(0, lambda: self.status_label.config(text=error_msg))
+                self.after(0, lambda: self._log(f"❌ {error_msg}"))
+                self.after(0, lambda: messagebox.showerror("Error", error_msg))
 
         thread = threading.Thread(target=search_thread)
         thread.daemon = True
@@ -782,18 +1164,28 @@ class SearchDialog(tk.Toplevel):
         def compare_thread():
             self.downloaded_images = []
             self.similarity_scores = []
+            
+            def update_status(msg):
+                self.after(0, lambda: self.status_label.config(text=msg))
+                self.after(0, lambda: self._log(msg))
 
+            update_status(f"Descargando {len(results)} portadas para comparar...")
+            
             # Download all covers
-            for result in results:
+            for i, result in enumerate(results):
                 try:
+                    update_status(f"Descargando portada {i+1}/{len(results)}: {result.series_name_s}")
                     image_data = self.db.query_image(result)
                     if image_data:
                         image = Image.open(BytesIO(image_data))
                         self.downloaded_images.append(image)
                     else:
                         self.downloaded_images.append(None)
-                except:
+                except Exception as e:
                     self.downloaded_images.append(None)
+                    self.after(0, lambda: self._log(f"⚠️ Error descargando portada {i+1}: {str(e)}"))
+
+            update_status("Comparando portadas con el comic...")
 
             # Compare with comic cover
             if self.comic.cover_image and self.downloaded_images:
@@ -822,11 +1214,12 @@ class SearchDialog(tk.Toplevel):
                         self._show_series_preview(self.selected_series)
 
                         best_score = self.similarity_scores[self.best_match_index]
-                        self.status_label.config(
-                            text="Mejor match encontrado: {0:.0f}% similar (⭐ marcado)".format(best_score)
-                        )
+                        status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
+                        self.status_label.config(text=status_msg)
+                        self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
                     else:
-                        self.status_label.config(text="{0} series encontradas".format(len(results)))
+                        self.status_label.config(text=f"{len(results)} series encontradas")
+                        self._log("ℹ️ Comparación completada")
 
                 self.after(0, update_ui)
 
@@ -875,7 +1268,7 @@ class SearchDialog(tk.Toplevel):
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        image.thumbnail((300, 450), Image.ANTIALIAS)
+                        image.thumbnail((300, 450), ANTIALIAS)
                         photo = ImageTk.PhotoImage(image)
                         self.preview_label.config(image=photo, text='')
                         self.cover_images['current'] = photo  # Keep reference
@@ -909,7 +1302,7 @@ class SearchDialog(tk.Toplevel):
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        image.thumbnail((300, 450), Image.ANTIALIAS)
+                        image.thumbnail((300, 450), ANTIALIAS)
                         photo = ImageTk.PhotoImage(image)
                         self.preview_label.config(image=photo, text='')
                         self.cover_images['current'] = photo  # Keep reference

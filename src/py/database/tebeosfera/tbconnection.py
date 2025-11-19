@@ -12,6 +12,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import re
+import gzip
 from utils_compat import sstr
 
 
@@ -36,6 +37,10 @@ class TebeoSferaConnection(object):
         '''Initialize the connection manager'''
         self.__last_query_time = 0
         self.__session_opener = None
+        self.last_request_url = None
+        self.last_status_code = None
+        self.last_response_size = 0
+        self.last_elapsed_ms = 0
         self._init_session()
 
     def _init_session(self):
@@ -79,13 +84,22 @@ class TebeoSferaConnection(object):
         if not url.startswith('http'):
             url = TebeoSferaConnection.BASE_URL + url
 
+        # Track request metadata
+        self.last_request_url = url
+        self.last_status_code = None
+        self.last_response_size = 0
+        self.last_elapsed_ms = 0
+
         # Enforce rate limiting
         self._enforce_rate_limit()
 
         try:
+            start_time = time.time()
             response = self.__session_opener.open(url, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            self.last_status_code = getattr(response, 'status', None) or response.getcode()
             html_content = response.read()
-
+            elapsed = (time.time() - start_time) * 1000.0
+            self.last_elapsed_ms = elapsed
             # Handle gzip encoding if present
             if response.info().get('Content-Encoding') == 'gzip':
                 import io
@@ -94,6 +108,7 @@ class TebeoSferaConnection(object):
                 f = gzip.GzipFile(fileobj=buf)
                 html_content = f.read()
 
+            self.last_response_size = len(html_content)
             # Decode to unicode
             charset = self._get_charset(response)
             if charset:
@@ -108,12 +123,15 @@ class TebeoSferaConnection(object):
             return html_content
 
         except urllib.error.HTTPError as e:
+            self.last_status_code = e.code
             print("HTTP Error {0}: {1}".format(e.code, e.reason))
             return None
         except urllib.error.URLError as e:
+            self.last_status_code = None
             print("URL Error: {0}".format(e.reason))
             return None
         except Exception as e:
+            self.last_status_code = None
             print("Error fetching page: {0}".format(sstr(e)))
             return None
 
@@ -126,12 +144,115 @@ class TebeoSferaConnection(object):
         '''
         # Clean and encode the query
         query = query.strip()
-        query = query.replace(' ', '_')
+        original_query = query
+        query_encoded = query.replace(' ', '_')
+        query_encoded = urllib.parse.quote(query_encoded, safe='_')
 
-        # Build search URL
-        search_url = "/buscador/{0}/".format(query)
-
-        return self.get_page(search_url)
+        # Build search URL (initial page)
+        search_url = "/buscador/{0}/".format(query_encoded)
+        
+        # Get initial page to understand structure
+        initial_html = self.get_page(search_url)
+        if not initial_html:
+            return None
+        
+        # The page uses AJAX to load results. We need to make the AJAX calls directly.
+        # Based on the JavaScript code, we need to call:
+        # 1. /neko/templates/ajax/buscador_txt_post.php for collections, authors, etc.
+        # 2. /neko/php/ajax/megaAjax.php for numbers (action: "buscador_simple_numeros")
+        
+        # Collect all results from AJAX endpoints
+        all_results_html = []
+        
+        # Search in collections first
+        try:
+            collections_data = urllib.parse.urlencode({
+                'tabla': 'T3_colecciones',
+                'busqueda': original_query
+            }).encode('utf-8')
+            
+            collections_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            request = urllib.request.Request(collections_url, data=collections_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            collections_html = response.read()
+            
+            # Check if response is gzipped
+            if collections_html.startswith(b'\x1f\x8b'):  # gzip magic number
+                collections_html = gzip.decompress(collections_html)
+            
+            # Decode response
+            charset = self._get_charset(response)
+            if charset:
+                collections_html = collections_html.decode(charset)
+            else:
+                try:
+                    collections_html = collections_html.decode('utf-8')
+                except:
+                    collections_html = collections_html.decode('latin-1')
+            
+            if collections_html and collections_html.strip():
+                all_results_html.append(collections_html)
+                from utils_compat import log
+                log.debug("Collections AJAX returned {0} bytes".format(len(collections_html)))
+        except Exception as e:
+            from utils_compat import log
+            log.debug("Error fetching collections via AJAX: {0}".format(sstr(e)))
+        
+        # Search in numbers (issues)
+        try:
+            numbers_data = urllib.parse.urlencode({
+                'action': 'buscador_simple_numeros',
+                'busqueda': original_query,
+                'reg_ini': '0',
+                'rpp': '100'  # Results per page
+            }).encode('utf-8')
+            
+            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
+            request = urllib.request.Request(numbers_url, data=numbers_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            numbers_html = response.read()
+            
+            # Check if response is gzipped
+            if numbers_html.startswith(b'\x1f\x8b'):  # gzip magic number
+                numbers_html = gzip.decompress(numbers_html)
+            
+            # Decode response
+            charset = self._get_charset(response)
+            if charset:
+                numbers_html = numbers_html.decode(charset)
+            else:
+                try:
+                    numbers_html = numbers_html.decode('utf-8')
+                except:
+                    numbers_html = numbers_html.decode('latin-1')
+            
+            if numbers_html and numbers_html.strip():
+                all_results_html.append(numbers_html)
+                from utils_compat import log
+                log.debug("Numbers AJAX returned {0} bytes".format(len(numbers_html)))
+        except Exception as e:
+            from utils_compat import log
+            log.debug("Error fetching numbers via AJAX: {0}".format(sstr(e)))
+        
+        # Combine all results into a single HTML string
+        if all_results_html:
+            combined_html = '\n'.join(all_results_html)
+            from utils_compat import log
+            log.debug("Combined AJAX results: {0} bytes".format(len(combined_html)))
+            return combined_html
+        
+        # Fallback: return initial page (though it won't have results)
+        return initial_html
 
     def get_issue_page(self, issue_slug):
         '''
@@ -222,6 +343,15 @@ class TebeoSferaConnection(object):
         '''Close the connection and clean up resources'''
         # Nothing to explicitly close with urllib2
         pass
+
+    def get_request_info(self):
+        '''Return metadata about the most recent HTTP request'''
+        return {
+            'url': self.last_request_url,
+            'status': self.last_status_code,
+            'bytes': self.last_response_size,
+            'elapsed_ms': self.last_elapsed_ms
+        }
 
 
 # Module-level convenience function
