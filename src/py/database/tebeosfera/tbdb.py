@@ -80,7 +80,9 @@ class TebeoSferaDB(object):
         # Log breakdown by type
         issues_count = sum(1 for r in results if r.get('type') == 'issue')
         collections_count = sum(1 for r in results if r.get('type') == 'collection')
-        log.debug("Breakdown: {0} issues, {1} collections".format(issues_count, collections_count))
+        sagas_count = sum(1 for r in results if r.get('type') == 'saga')
+        log.debug("Breakdown: {0} issues, {1} collections, {2} sagas".format(
+            issues_count, collections_count, sagas_count))
         
         # Log first few results for debugging
         if results:
@@ -93,9 +95,9 @@ class TebeoSferaDB(object):
         series_refs = []
         seen_series = {}  # Map series_name -> SeriesRef data
         
-        # Group issues by series name, and process collections
+        # Group issues by series name, and process collections/sagas
         for result in results:
-            if result['type'] == 'collection':
+            if result['type'] in ['collection', 'saga']:
                 slug = result['slug']
                 series_name = result.get('series_name') or result.get('title', slug)
                 
@@ -114,7 +116,7 @@ class TebeoSferaDB(object):
                         'thumb_url': thumb_url,
                         'image_url': image_url or thumb_url,
                         'issue_count': 0,
-                        'type': 'collection'
+                        'type': result['type']  # 'collection' or 'saga'
                     }
             
             elif result['type'] == 'issue':
@@ -172,13 +174,16 @@ class TebeoSferaDB(object):
                 issue_count_n=series_data['issue_count'],
                 thumb_url_s=thumb_url
             )
+            # Set extended fields
+            series_ref.type_s = series_data.get('type', 'collection')
             series_ref.extra_image_url = series_data.get('image_url')
             series_refs.append(series_ref)
 
-        log.debug("Found {0} series in TebeoSfera (from {1} results: {2} issues, {3} collections)".format(
+        log.debug("Found {0} series in TebeoSfera (from {1} results: {2} issues, {3} collections, {4} sagas)".format(
             len(series_refs), len(results),
             sum(1 for r in results if r.get('type') == 'issue'),
-            sum(1 for r in results if r.get('type') == 'collection')))
+            sum(1 for r in results if r.get('type') == 'collection'),
+            sum(1 for r in results if r.get('type') == 'saga')))
         return series_refs
 
     def query_series_details(self, series_ref):

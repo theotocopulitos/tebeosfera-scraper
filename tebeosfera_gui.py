@@ -87,7 +87,7 @@ def resize_image_for_preview(image, max_size):
     if new_width == width and new_height == height:
         return image.copy()
 
-    return image.resize((new_width, new_height), Image.LANCZOS)
+    return image.resize((new_width, new_height), ANTIALIAS)
 
 # Add src/py to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
@@ -102,8 +102,8 @@ except ImportError as e:
     print("Install with: pip install pillow")
     sys.exit(1)
 
-MAIN_PREVIEW_SIZE = (450, 650)
-SEARCH_PREVIEW_SIZE = (450, 650)
+MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
+SEARCH_PREVIEW_SIZE = (460, 690)
 
 try:
     from database.tebeosfera.tbdb import TebeoSferaDB
@@ -528,57 +528,90 @@ class TebeoSferaGUI(tk.Tk):
 
         scrollbar.config(command=self.file_listbox.yview)
 
-        # Right panel - Preview and details
+        # Right panel - Preview and details (REORGANIZADO COMPLETAMENTE)
         right_frame = tk.Frame(top_paned)
         top_paned.add(right_frame, minsize=400)
 
-        tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
-
-        # Cover preview container to keep size consistent
-        cover_container = tk.Frame(right_frame, width=450, height=650, bg='gray80', relief=tk.SUNKEN, bd=1)
-        cover_container.pack(padx=5, pady=5, fill=tk.BOTH, expand=False)
-        cover_container.pack_propagate(False)
-
-        self.cover_label = tk.Label(
-            cover_container,
-            text="Selecciona un comic para ver su portada\n(Vista previa ampliada)",
-            bg='gray90',
-            anchor=tk.CENTER,
-            justify=tk.CENTER
+        # ========== SECCIÓN 1: PORTADA (aspect ratio vertical típico: 2:3) ==========
+        preview_section = tk.Frame(right_frame)
+        preview_section.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        tk.Label(preview_section, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
+        
+        # Canvas para la imagen - se ajusta al área disponible
+        canvas_frame = tk.Frame(preview_section, bg='gray80', relief=tk.SUNKEN, bd=2)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, pady=(0,5))
+        
+        self.cover_canvas = tk.Canvas(canvas_frame, bg='gray90', highlightthickness=0)
+        self.cover_canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Placeholder text
+        self.cover_canvas.create_text(
+            200, 300,
+            text="Selecciona un comic\npara ver su portada",
+            font=('Arial', 12), fill='gray40', tags='placeholder'
         )
-        self.cover_label.pack(fill=tk.BOTH, expand=True)
+        
+        # Keep a reference for the label (needed for image persistence)
+        self.cover_label = tk.Label(self.cover_canvas)  # Dummy label for image reference
 
-        page_nav_frame = tk.Frame(right_frame)
-        page_nav_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
-        self.prev_page_button = tk.Button(page_nav_frame, text="⬅ Página anterior",
-                                          command=self._show_prev_page, state=tk.DISABLED)
-        self.prev_page_button.pack(side=tk.LEFT, padx=2)
-        self.next_page_button = tk.Button(page_nav_frame, text="Página siguiente ➡",
-                                          command=self._show_next_page, state=tk.DISABLED)
-        self.next_page_button.pack(side=tk.LEFT, padx=2)
-        self.page_info_label = tk.Label(page_nav_frame, text="Página 0/0")
-        self.page_info_label.pack(side=tk.LEFT, padx=10)
+        # ========== SECCIÓN 2: NAVEGACIÓN DE PÁGINAS ==========
+        page_nav_frame = tk.Frame(right_frame, relief=tk.GROOVE, bd=2)
+        page_nav_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Spacer to center the navigation controls
+        tk.Frame(page_nav_frame).pack(side=tk.LEFT, expand=True)
+        
+        self.prev_page_button = tk.Button(page_nav_frame, text="⬅",
+                                          command=self._show_prev_page, state=tk.DISABLED,
+                                          width=3, font=('Arial', 12, 'bold'))
+        self.prev_page_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        self.page_info_label = tk.Label(page_nav_frame, text="0/0", 
+                                       font=('Arial', 11, 'bold'), width=10)
+        self.page_info_label.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        self.next_page_button = tk.Button(page_nav_frame, text="➡",
+                                          command=self._show_next_page, state=tk.DISABLED,
+                                          width=3, font=('Arial', 12, 'bold'))
+        self.next_page_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Spacer to center the navigation controls
+        tk.Frame(page_nav_frame).pack(side=tk.LEFT, expand=True)
 
-        # Details frame
-        details_frame = tk.Frame(right_frame)
-        details_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        tk.Label(details_frame, text="Detalles:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
-
-        self.details_text = tk.Text(details_frame, height=10, wrap=tk.WORD)
-        self.details_text.pack(fill=tk.BOTH, expand=True)
-
-        # Action buttons
+        # ========== SECCIÓN 3: BOTONES DE ACCIÓN ==========
         button_frame = tk.Frame(right_frame)
         button_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", command=self._search_current).pack(side=tk.LEFT, padx=2)
-        tk.Button(button_frame, text="💾 Generar ComicInfo.xml", command=self._generate_xml_current).pack(side=tk.LEFT, padx=2)
-        tk.Button(button_frame, text="🌐 Abrir en navegador", command=self._open_current_in_browser).pack(side=tk.LEFT, padx=2)
+        tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", command=self._search_current,
+                 height=2).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        tk.Button(button_frame, text="💾 Generar ComicInfo.xml", command=self._generate_xml_current,
+                 height=2).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        tk.Button(button_frame, text="🌐 Abrir en navegador", command=self._open_current_in_browser,
+                 height=2).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
         
-        # Bottom panel - Log
-        log_frame = tk.Frame(paned)
-        paned.add(log_frame, minsize=150)
+        # ========== PANEL INFERIOR: DETALLES + LOG (horizontal) ==========
+        bottom_panel = tk.Frame(paned)
+        paned.add(bottom_panel, minsize=150)
+        
+        # Detalles a la izquierda (ocupando todo el ancho disponible)
+        details_frame = tk.Frame(bottom_panel)
+        details_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False, padx=5, pady=5)
+
+        tk.Label(details_frame, text="Detalles:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
+
+        details_text_frame = tk.Frame(details_frame)
+        details_text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.details_text = tk.Text(details_text_frame, height=4, wrap=tk.WORD)
+        details_scrollbar = tk.Scrollbar(details_text_frame, command=self.details_text.yview)
+        self.details_text.config(yscrollcommand=details_scrollbar.set)
+        details_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Log debajo de Detalles
+        log_frame = tk.Frame(bottom_panel)
+        log_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=(0,5))
         
         log_header = tk.Frame(log_frame)
         log_header.pack(fill=tk.X, padx=5, pady=(5, 0))
@@ -690,11 +723,19 @@ class TebeoSferaGUI(tk.Tk):
             return
 
         comic = self.comic_files[index]
+        comic.current_page_index = 0
+        
+        # Load all pages first
+        comic.load_image_entries()
+        self._log(f"📚 Cómic seleccionado: {comic.filename} ({comic.total_pages} páginas)")
+        
+        # Display first page
         self._display_comic_page(comic, 0)
 
         # Show details
         details = "Archivo: {0}\n".format(comic.filename)
         details += "Ruta: {0}\n".format(comic.filepath)
+        details += "Páginas: {0}\n".format(comic.total_pages)
         details += "Estado: {0}\n".format(comic.status)
 
         if comic.metadata:
@@ -709,31 +750,85 @@ class TebeoSferaGUI(tk.Tk):
         '''Display a specific page from the selected comic'''
         image = comic.get_page_image(page_index)
         if image:
-            preview_img = resize_image_for_preview(image, MAIN_PREVIEW_SIZE) or image
-            photo = ImageTk.PhotoImage(preview_img)
+            # Get canvas actual size
+            self.cover_canvas.update_idletasks()
+            canvas_width = self.cover_canvas.winfo_width()
+            canvas_height = self.cover_canvas.winfo_height()
+            
+            # Use reasonable defaults if canvas not yet sized
+            if canvas_width < 10:
+                canvas_width = 400
+            if canvas_height < 10:
+                canvas_height = 600
+            
+            # Scale image to fit canvas while maintaining aspect ratio
+            img_width, img_height = image.size
+            width_ratio = canvas_width / img_width
+            height_ratio = canvas_height / img_height
+            scale = min(width_ratio, height_ratio)
+            
+            new_width = int(img_width * scale)
+            new_height = int(img_height * scale)
+            
+            display_img = image.resize((new_width, new_height), ANTIALIAS)
+            photo = ImageTk.PhotoImage(display_img)
+            
+            # Center image in canvas
+            x_offset = (canvas_width - new_width) // 2
+            y_offset = (canvas_height - new_height) // 2
+            
+            # Update label with image
             self.cover_label.config(image=photo, text='')
             self.cover_label.image = photo
-            total = comic.total_pages or len(comic.image_entries) or 1
-            self.page_info_label.config(text=f"Página {comic.current_page_index + 1}/{total}")
+            
+            # Position label centered in canvas
+            self.cover_canvas.delete("all")
+            self.cover_canvas.create_image(x_offset, y_offset, image=photo, anchor=tk.NW)
+            self.cover_canvas.configure(scrollregion=(0, 0, canvas_width, canvas_height))
         else:
             msg = comic.error_msg if comic.error_msg else 'No se pudo extraer la portada'
-            self.cover_label.config(image='', text=msg)
+            self.cover_canvas.delete("all")
+            self.cover_canvas.create_text(
+                self.cover_canvas.winfo_width() // 2 if self.cover_canvas.winfo_width() > 10 else 200,
+                self.cover_canvas.winfo_height() // 2 if self.cover_canvas.winfo_height() > 10 else 300,
+                text=msg, font=('Arial', 12), fill='gray40'
+            )
             self.cover_label.image = None
-            self.page_info_label.config(text="Página 0/0")
 
+        # Update buttons and page counter
         self._update_page_buttons_state(comic)
         return image is not None
 
     def _update_page_buttons_state(self, comic):
-        total = comic.total_pages or len(comic.image_entries)
-        if total and total > 1:
+        '''Update page navigation button states based on current page'''
+        if not hasattr(self, 'prev_page_button') or not hasattr(self, 'next_page_button'):
+            return
+        
+        total = comic.total_pages or len(comic.image_entries) or 0
+        current = comic.current_page_index
+        
+        # Always show the buttons frame and update info
+        if hasattr(self, 'page_info_label'):
+            if total > 0:
+                self.page_info_label.config(text=f"{current + 1}/{total}")
+            else:
+                self.page_info_label.config(text="0/0")
+        
+        # Enable/disable buttons based on page count and position
+        if total > 1:
+            # Enable prev if not on first page
             self.prev_page_button.config(
-                state=tk.NORMAL if comic.current_page_index > 0 else tk.DISABLED)
+                state=tk.NORMAL if current > 0 else tk.DISABLED)
+            # Enable next if not on last page
             self.next_page_button.config(
-                state=tk.NORMAL if comic.current_page_index < total - 1 else tk.DISABLED)
+                state=tk.NORMAL if current < total - 1 else tk.DISABLED)
+            self._log(f"📖 Navegación habilitada: página {current + 1} de {total}")
         else:
+            # Disable both if only 1 or 0 pages
             self.prev_page_button.config(state=tk.DISABLED)
             self.next_page_button.config(state=tk.DISABLED)
+            if total == 1:
+                self._log(f"ℹ️ Cómic con una sola página - navegación deshabilitada")
 
     def _show_prev_page(self):
         '''Show previous page of current comic'''
@@ -1154,18 +1249,22 @@ class SearchDialog(tk.Toplevel):
 
         tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
 
-        preview_container = tk.Frame(right_frame, width=450, height=650, bg='gray80', relief=tk.SUNKEN, bd=1)
-        preview_container.pack(padx=5, pady=5, fill=tk.BOTH, expand=False)
-        preview_container.pack_propagate(False)
-
-        self.preview_label = tk.Label(
-            preview_container,
-            text="Selecciona un resultado para ver su portada\n(Vista previa ampliada)",
-            bg='gray90',
-            anchor=tk.CENTER,
-            justify=tk.CENTER
+        # Canvas para la imagen - se ajusta al área disponible
+        preview_container = tk.Frame(right_frame, bg='gray80', relief=tk.SUNKEN, bd=2)
+        preview_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.preview_canvas = tk.Canvas(preview_container, bg='gray90', highlightthickness=0)
+        self.preview_canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Placeholder text
+        self.preview_canvas.create_text(
+            200, 300,
+            text="Selecciona un resultado\npara ver su portada",
+            font=('Arial', 12), fill='gray40', tags='placeholder'
         )
-        self.preview_label.pack(fill=tk.BOTH, expand=True)
+        
+        # Keep a reference for the label (needed for image persistence)
+        self.preview_label = tk.Label(self.preview_canvas)  # Dummy label for image reference
 
         preview_actions = tk.Frame(right_frame)
         preview_actions.pack(fill=tk.X, padx=5, pady=(0, 5))
@@ -1418,16 +1517,38 @@ class SearchDialog(tk.Toplevel):
                         self._log("❌ Sin resultados encontrados")
                         return
 
-                    # Display results first
+                    # Display results with type indicators
                     for result in results:
-                        self.results_listbox.insert(tk.END, result.series_name_s)
+                        # Determine icon based on type
+                        type_attr = getattr(result, 'type_s', 'collection')  # Default to collection if not set
+                        if type_attr == 'issue':
+                            icon = "📖"  # Issue individual
+                        elif type_attr == 'saga':
+                            icon = "🗂️"  # Saga (grupo temático)
+                        else:
+                            icon = "📚"  # Collection/Series (lista de issues)
+                        
+                        display_name = f"{icon} {result.series_name_s}"
+                        self.results_listbox.insert(tk.END, display_name)
 
-                    status_text = f"{len(results)} series encontradas - Comparando portadas..."
+                    # Count by type
+                    type_counts = {'issue': 0, 'collection': 0, 'saga': 0}
+                    for result in results:
+                        type_attr = getattr(result, 'type_s', 'collection')
+                        if type_attr in type_counts:
+                            type_counts[type_attr] += 1
+                        else:
+                            type_counts['collection'] += 1
+                    
+                    status_text = f"{len(results)} resultados: {type_counts['issue']} issues, {type_counts['collection']} series, {type_counts['saga']} sagas"
                     if info_line:
                         status_text += f"\n{info_line}"
-                    self.status_label.config(text=status_text)
-                    self._log(f"✅ {len(results)} series encontradas")
-                    sample_names = ", ".join(result.series_name_s for result in results[:5])
+                    self.status_label.config(text=status_text + " - Comparando portadas...")
+                    self._log(f"✅ {len(results)} resultados encontrados")
+                    self._log(f"   📖 {type_counts['issue']} issues individuales (con metadata completa)")
+                    self._log(f"   📚 {type_counts['collection']} colecciones (listas de issues)")
+                    self._log(f"   🗂️  {type_counts['saga']} sagas (grupos temáticos)")
+                    sample_names = ", ".join(result.series_name_s[:40] for result in results[:5])
                     self._log(f"📚 Primeros resultados ({min(len(results), 5)}/{len(results)}): {sample_names}")
 
                     # Start image comparison if comic has a cover
@@ -1543,12 +1664,20 @@ class SearchDialog(tk.Toplevel):
     def _show_series_preview(self, series_ref):
         '''Show preview of selected series'''
         # Clear previous preview
-        self.preview_label.config(image='', text='Cargando portada...')
+        self.preview_canvas.delete("all")
+        self.preview_canvas.create_text(
+            self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+            self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+            text='Cargando portada...',
+            font=('Arial', 12), fill='gray40'
+        )
         self.info_text.delete('1.0', tk.END)
         self.update()
 
-        # Show series info
-        info = "Serie: {0}\n".format(series_ref.series_name_s)
+        # Show series info - distinguir tipo
+        series_type = "📂 Saga/Colección" if hasattr(series_ref, 'series_type') and series_ref.series_type == 'collection' else "📚 Serie"
+        info = f"{series_type}\n"
+        info += "Nombre: {0}\n".format(series_ref.series_name_s)
         info += "Clave: {0}\n".format(series_ref.series_key)
         self.info_text.insert('1.0', info)
 
@@ -1559,15 +1688,26 @@ class SearchDialog(tk.Toplevel):
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        preview_img = resize_image_for_preview(image, SEARCH_PREVIEW_SIZE) or image
-                        photo = ImageTk.PhotoImage(preview_img)
-                        self.preview_label.config(image=photo, text='')
-                        self.cover_images['current'] = photo  # Keep reference
+                        self._display_preview_image(image)
                     except Exception as e:
-                        self.preview_label.config(text='Error mostrando portada')
+                        self.preview_canvas.delete("all")
+                        self.preview_canvas.create_text(
+                            self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+                            self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+                            text='Error mostrando portada',
+                            font=('Arial', 12), fill='red'
+                        )
                 self.after(0, show_cover)
             else:
-                self.after(0, lambda: self.preview_label.config(text='Sin portada disponible'))
+                def show_no_cover():
+                    self.preview_canvas.delete("all")
+                    self.preview_canvas.create_text(
+                        self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+                        self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+                        text='Sin portada disponible',
+                        font=('Arial', 12), fill='gray40'
+                    )
+                self.after(0, show_no_cover)
 
         thread = threading.Thread(target=load_cover)
         thread.daemon = True
@@ -1576,12 +1716,19 @@ class SearchDialog(tk.Toplevel):
     def _show_issue_preview(self, issue_ref):
         '''Show preview of selected issue'''
         # Clear previous preview
-        self.preview_label.config(image='', text='Cargando portada...')
+        self.preview_canvas.delete("all")
+        self.preview_canvas.create_text(
+            self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+            self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+            text='Cargando portada...',
+            font=('Arial', 12), fill='gray40'
+        )
         self.info_text.delete('1.0', tk.END)
         self.update()
 
         # Show issue info
-        info = "Título: {0}\n".format(issue_ref.title_s)
+        info = "📖 Issue\n"
+        info += "Título: {0}\n".format(issue_ref.title_s)
         info += "Número: {0}\n".format(issue_ref.issue_num_s)
         info += "Clave: {0}\n".format(issue_ref.issue_key)
         self.info_text.insert('1.0', info)
@@ -1593,19 +1740,67 @@ class SearchDialog(tk.Toplevel):
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        preview_img = resize_image_for_preview(image, SEARCH_PREVIEW_SIZE) or image
-                        photo = ImageTk.PhotoImage(preview_img)
-                        self.preview_label.config(image=photo, text='')
-                        self.cover_images['current'] = photo  # Keep reference
+                        self._display_preview_image(image)
                     except Exception as e:
-                        self.preview_label.config(text='Error mostrando portada')
+                        self.preview_canvas.delete("all")
+                        self.preview_canvas.create_text(
+                            self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+                            self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+                            text='Error mostrando portada',
+                            font=('Arial', 12), fill='red'
+                        )
                 self.after(0, show_cover)
             else:
-                self.after(0, lambda: self.preview_label.config(text='Sin portada disponible'))
+                def show_no_cover():
+                    self.preview_canvas.delete("all")
+                    self.preview_canvas.create_text(
+                        self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+                        self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+                        text='Sin portada disponible',
+                        font=('Arial', 12), fill='gray40'
+                    )
+                self.after(0, show_no_cover)
 
         thread = threading.Thread(target=load_cover)
         thread.daemon = True
         thread.start()
+
+    def _display_preview_image(self, image):
+        '''Display image in preview canvas, scaled to fit'''
+        # Get canvas actual size
+        self.preview_canvas.update_idletasks()
+        canvas_width = self.preview_canvas.winfo_width()
+        canvas_height = self.preview_canvas.winfo_height()
+        
+        # Use reasonable defaults if canvas not yet sized
+        if canvas_width < 10:
+            canvas_width = 300
+        if canvas_height < 10:
+            canvas_height = 450
+        
+        # Scale image to fit canvas while maintaining aspect ratio
+        img_width, img_height = image.size
+        width_ratio = canvas_width / img_width
+        height_ratio = canvas_height / img_height
+        scale = min(width_ratio, height_ratio)
+        
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+        
+        display_img = image.resize((new_width, new_height), ANTIALIAS)
+        photo = ImageTk.PhotoImage(display_img)
+        
+        # Center image in canvas
+        x_offset = (canvas_width - new_width) // 2
+        y_offset = (canvas_height - new_height) // 2
+        
+        # Update label with image and position centered in canvas
+        self.preview_label.config(image=photo)
+        self.preview_label.image = photo  # Keep reference
+        
+        # Clear canvas and draw image
+        self.preview_canvas.delete("all")
+        self.preview_canvas.create_image(x_offset, y_offset, image=photo, anchor=tk.NW)
 
     def _view_issues(self):
         '''View issues for selected series'''

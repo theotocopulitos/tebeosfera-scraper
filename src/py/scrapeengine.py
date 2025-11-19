@@ -155,9 +155,7 @@ class ScrapeEngine(object):
                   finish_form.show_form()
             except Exception as ex:
                log.handle_error(ex)
-               # show the user a dialog describing what was scraped
-               with FinishForm(self, self.__status) as finish_form:
-                  finish_form.show_form()
+               log.debug("Summary dialog could not be displayed.")
 
    # ==========================================================================
    def __scrape(self, books):

@@ -427,30 +427,23 @@ class TebeoSferaParser(object):
             if full_image_url and not full_image_url.startswith('http'):
                 full_image_url = 'https://www.tebeosfera.com' + full_image_url
             
-            # Extract issue link and slug - need to handle nested tags in link text
+            # Extract link and slug - can be issue, collection, or saga
+            # Try issue link first (/numeros/)
             link_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+            result_type = 'issue'
+            
             if not link_match:
-                # Try collection link
+                # Try collection link (/colecciones/)
                 link_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-                if link_match:
-                    url = link_match.group(1)
-                    slug = link_match.group(2)
-                    # Extract link text (everything between <a> and </a>, handling nested tags)
-                    link_start = link_match.end()
-                    link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
-                    if link_end_match:
-                        link_text = linea_content[link_start:link_start+link_end_match.start()]
-                        title = self._clean_text(self._strip_tags(link_text))
-                        
-                        results.append({
-                            'slug': slug,
-                            'title': title,
-                            'url': url,
-                            'thumb_url': thumb_url,
-                            'image_url': full_image_url or thumb_url,
-                            'series_name': title,  # For collections, title is the series name
-                            'type': 'collection'
-                        })
+                result_type = 'collection'
+            
+            if not link_match:
+                # Try saga link (/sagas/)
+                link_match = re.search(r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                result_type = 'saga'
+            
+            if not link_match:
+                # No recognized link type found
                 continue
             
             url = link_match.group(1)
@@ -462,9 +455,24 @@ class TebeoSferaParser(object):
             if not link_end_match:
                 continue
             link_text = linea_content[link_start:link_start+link_end_match.start()]
+            title = self._clean_text(self._strip_tags(link_text))
             
-            # Extract full title from link text
-            full_title = self._clean_text(self._strip_tags(link_text))
+            # For collections and sagas, they are series/groups, not individual issues
+            if result_type in ['collection', 'saga']:
+                results.append({
+                    'slug': slug,
+                    'title': title,
+                    'url': url,
+                    'thumb_url': thumb_url,
+                    'image_url': full_image_url or thumb_url,
+                    'series_name': title,  # For collections/sagas, title IS the series name
+                    'type': result_type
+                })
+                continue
+            
+            # If we get here, it's an issue (/numeros/)
+            # The url, slug, and title were already extracted above
+            full_title = title
             
             # Parse series name from format: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
             # Or: "SERIE (AÑO, EDITORIAL) NÚMERO"

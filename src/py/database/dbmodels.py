@@ -177,6 +177,10 @@ class SeriesRef(object):
       
       # used only for comparisons
       self._cmpkey_s = sstr(self.series_key)
+      
+      # Optional extended fields (can be set after construction)
+      self.__type_s = None  # 'issue', 'collection', or 'saga'
+      self.__extra_image_url = None  # High-resolution image URL
    
       
    #===========================================================================
@@ -197,6 +201,25 @@ class SeriesRef(object):
    
    # the number of issues in this series. an int >= 0.
    issue_count_n = property( lambda self : self.__issue_count_n )
+   
+   # Extended fields (read/write properties)
+   @property
+   def type_s(self):
+      '''Type of result: 'issue', 'collection', or 'saga'. May be None.'''
+      return self.__type_s
+   
+   @type_s.setter
+   def type_s(self, value):
+      self.__type_s = value
+   
+   @property
+   def extra_image_url(self):
+      '''High-resolution image URL (if available). May be None.'''
+      return self.__extra_image_url
+   
+   @extra_image_url.setter
+   def extra_image_url(self, value):
+      self.__extra_image_url = value
 
       
    #===========================================================================
