@@ -417,6 +417,15 @@ class TebeoSferaParser(object):
             thumb_url = img_match.group(1) if img_match else None
             if thumb_url and not thumb_url.startswith('http'):
                 thumb_url = 'https://www.tebeosfera.com' + thumb_url
+
+            full_image_match = re.search(
+                r'<a[^>]*href="([^"]+)"[^>]*>\s*<img[^>]*id="img_principal"',
+                linea_content,
+                re.IGNORECASE
+            )
+            full_image_url = full_image_match.group(1) if full_image_match else None
+            if full_image_url and not full_image_url.startswith('http'):
+                full_image_url = 'https://www.tebeosfera.com' + full_image_url
             
             # Extract issue link and slug - need to handle nested tags in link text
             link_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
@@ -438,6 +447,7 @@ class TebeoSferaParser(object):
                             'title': title,
                             'url': url,
                             'thumb_url': thumb_url,
+                            'image_url': full_image_url or thumb_url,
                             'series_name': title,  # For collections, title is the series name
                             'type': 'collection'
                         })
@@ -512,6 +522,7 @@ class TebeoSferaParser(object):
                     'title': full_title,
                     'url': url,
                     'thumb_url': thumb_url,
+                    'image_url': full_image_url or thumb_url,
                     'series_name': series_name.strip(),
                     'issue_title': issue_title.strip() if issue_title else None,
                     'type': 'issue'

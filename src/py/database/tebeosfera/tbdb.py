@@ -104,11 +104,15 @@ class TebeoSferaDB(object):
                     thumb_url = result.get('thumb_url')
                     if thumb_url and not thumb_url.startswith('http'):
                         thumb_url = 'https://www.tebeosfera.com' + thumb_url
+                    image_url = result.get('image_url')
+                    if image_url and not image_url.startswith('http'):
+                        image_url = 'https://www.tebeosfera.com' + image_url
 
                     seen_series[series_name] = {
                         'series_key': slug,
                         'series_name': series_name,
                         'thumb_url': thumb_url,
+                        'image_url': image_url or thumb_url,
                         'issue_count': 0,
                         'type': 'collection'
                     }
@@ -119,28 +123,29 @@ class TebeoSferaDB(object):
                     continue
                 
                 # Clean series name - sometimes it includes date/publisher in parens
-                # We want to group by the main name
-                base_series_name = series_name.split('(')[0].strip()
-                
-                # Use the full name with parens if available to distinguish different volumes
-                # but fallback to base name if needed
-                group_key = series_name
+                # We want to group by the main name (before parentheses or dash)
+                base_series_name = series_name.split('(')[0].split('-')[0].strip()
+                group_key = base_series_name if base_series_name else series_name.strip()
+                display_name = series_name.strip() or group_key
                 
                 if group_key not in seen_series:
                     # Get thumbnail URL from first issue
                     thumb_url = result.get('thumb_url')
                     if thumb_url and not thumb_url.startswith('http'):
                         thumb_url = 'https://www.tebeosfera.com' + thumb_url
+                    image_url = result.get('image_url')
+                    if image_url and not image_url.startswith('http'):
+                        image_url = 'https://www.tebeosfera.com' + image_url
                     
-                    # Create a series key from the series name
-                    # Important: use a cleaner key generation
+                    # Create a series key from the grouping key
                     series_key = group_key.lower().replace(' ', '_')
                     series_key = ''.join(c for c in series_key if c.isalnum() or c in '_-')
                     
                     seen_series[group_key] = {
                         'series_key': series_key,
-                        'series_name': group_key,
+                        'series_name': display_name,
                         'thumb_url': thumb_url,
+                        'image_url': image_url or thumb_url,
                         'issue_count': 0,
                         'type': 'issue'
                     }
@@ -149,7 +154,9 @@ class TebeoSferaDB(object):
                 
                 # Update thumbnail if this one is better (has http)
                 if result.get('thumb_url') and result.get('thumb_url').startswith('http'):
-                    seen_series[series_name]['thumb_url'] = result.get('thumb_url')
+                    seen_series[group_key]['thumb_url'] = result.get('thumb_url')
+                if result.get('image_url') and result.get('image_url').startswith('http'):
+                    seen_series[group_key]['image_url'] = result.get('image_url')
 
         # Convert to SeriesRef objects
         for series_name, series_data in seen_series.items():
@@ -165,6 +172,7 @@ class TebeoSferaDB(object):
                 issue_count_n=series_data['issue_count'],
                 thumb_url_s=thumb_url
             )
+            series_ref.extra_image_url = series_data.get('image_url')
             series_refs.append(series_ref)
 
         log.debug("Found {0} series in TebeoSfera (from {1} results: {2} issues, {3} collections)".format(
@@ -225,6 +233,7 @@ class TebeoSferaDB(object):
                     title_s=result['title'],
                     thumb_url_s=thumb_url
                 )
+                issue_ref.extra_image_url = result.get('image_url')
                 issue_refs.append(issue_ref)
 
         log.debug("Found {0} issues in series".format(len(issue_refs)))
@@ -293,6 +302,7 @@ class TebeoSferaDB(object):
                     title_s=result['title'],
                     thumb_url_s=thumb_url
                 )
+                issue_ref.extra_image_url = result.get('image_url')
                 issue_refs.append(issue_ref)
 
         log.debug("Found {0} issues in TebeoSfera".format(len(issue_refs)))

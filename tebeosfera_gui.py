@@ -23,7 +23,71 @@ import threading
 import queue
 import re
 import shutil
+import webbrowser
 from time import strftime
+
+TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
+
+
+def build_series_url(series_key_or_path):
+    """Build absolute URL for a series."""
+    if not series_key_or_path:
+        return None
+
+    path = series_key_or_path.strip()
+    if path.startswith('http'):
+        return path
+
+    if not path.startswith('/'):
+        # assume slug
+        path = f"/colecciones/{path}"
+
+    if not path.endswith('.html'):
+        path = f"{path}.html"
+
+    return f"{TEBEOSFERA_BASE_URL}{path}"
+
+
+def build_issue_url(issue_key_or_path):
+    """Build absolute URL for an issue."""
+    if not issue_key_or_path:
+        return None
+
+    path = issue_key_or_path.strip()
+    if path.startswith('http'):
+        return path
+
+    if not path.startswith('/'):
+        path = f"/numeros/{path}"
+
+    if not path.endswith('.html'):
+        path = f"{path}.html"
+
+    return f"{TEBEOSFERA_BASE_URL}{path}"
+
+
+def resize_image_for_preview(image, max_size):
+    """Resize image to fit within max_size, allowing upscale."""
+    if image is None:
+        return None
+
+    max_w, max_h = max_size
+    width, height = image.size
+
+    if width == 0 or height == 0:
+        return image
+
+    scale = min(float(max_w) / width, float(max_h) / height)
+    if scale <= 0:
+        return image
+
+    new_width = max(1, int(width * scale))
+    new_height = max(1, int(height * scale))
+
+    if new_width == width and new_height == height:
+        return image.copy()
+
+    return image.resize((new_width, new_height), Image.LANCZOS)
 
 # Add src/py to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
@@ -37,6 +101,9 @@ except ImportError as e:
     print("Error: This GUI requires tkinter and PIL/Pillow")
     print("Install with: pip install pillow")
     sys.exit(1)
+
+MAIN_PREVIEW_SIZE = (450, 650)
+SEARCH_PREVIEW_SIZE = (450, 650)
 
 try:
     from database.tebeosfera.tbdb import TebeoSferaDB
@@ -60,8 +127,9 @@ try:
 except ImportError:
     # Pillow < 10.0.0
     try:
+        from PIL import Image  # ensure Image is available
         ANTIALIAS = Image.ANTIALIAS
-    except AttributeError:
+    except (AttributeError, ImportError):
         ANTIALIAS = Image.LANCZOS
 
 
@@ -225,49 +293,90 @@ class ComicFile(object):
         self.selected_issue = None
         self.status = 'pending'  # pending, searching, selected, completed, error
         self.error_msg = None
+        self.image_entries = []
+        self.total_pages = 0
+        self.current_page_index = 0
+        self.archive_type = None
 
     def extract_cover(self):
         '''Extract the first page (cover) from the comic file'''
-        self.error_msg = None
-        
-        # Check for CBR first
-        if self.filepath.lower().endswith('.cbr'):
-            if not rarfile:
-                self.error_msg = "Módulo 'rarfile' no instalado.\nPor favor instale rarfile."
-                return None
+        image = self.get_page_image(0)
+        if image:
+            self.cover_image = image
+        return image
 
-        if not self.filepath.lower().endswith('.cbr') and not zipfile.is_zipfile(self.filepath):
-            self.error_msg = "Archivo inválido o corrupto"
+    def load_image_entries(self):
+        '''Load ordered list of image entries inside archive'''
+        if self.image_entries:
+            return
+
+        self.error_msg = None
+        entries = []
+
+        try:
+            if rarfile and self.filepath.lower().endswith('.cbr') and rarfile.is_rarfile(self.filepath):
+                self.archive_type = 'rar'
+                with rarfile.RarFile(self.filepath, 'r') as rf:
+                    entries = [
+                        f for f in rf.namelist()
+                        if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                    ]
+            elif zipfile.is_zipfile(self.filepath):
+                self.archive_type = 'zip'
+                with zipfile.ZipFile(self.filepath, 'r') as zf:
+                    entries = [
+                        f for f in zf.namelist()
+                        if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                    ]
+            else:
+                self.error_msg = "Formato de archivo no soportado"
+                return
+
+            entries.sort()
+            self.image_entries = entries
+            self.total_pages = len(entries)
+            if not self.total_pages:
+                self.error_msg = "No se encontraron imágenes en el archivo"
+            self.current_page_index = 0
+        except Exception as e:
+            print("Error cargando páginas de {0}: {1}".format(self.filename, e))
+            self.error_msg = "Error cargando páginas: {0}".format(str(e))
+            self.image_entries = []
+            self.total_pages = 0
+
+    def _read_image_data(self, entry_name):
+        try:
+            if self.archive_type == 'zip':
+                with zipfile.ZipFile(self.filepath, 'r') as zf:
+                    return zf.read(entry_name)
+            elif self.archive_type == 'rar' and rarfile:
+                with rarfile.RarFile(self.filepath, 'r') as rf:
+                    return rf.read(entry_name)
+        except Exception as e:
+            self.error_msg = "Error leyendo página: {0}".format(str(e))
+        return None
+
+    def get_page_image(self, page_index=None):
+        '''Return PIL image for given page index'''
+        self.load_image_entries()
+        if not self.image_entries:
+            return None
+
+        if page_index is None:
+            page_index = self.current_page_index
+
+        page_index = max(0, min(page_index, len(self.image_entries) - 1))
+        entry_name = self.image_entries[page_index]
+        data = self._read_image_data(entry_name)
+        if not data:
             return None
 
         try:
-            if self.filepath.lower().endswith('.cbr'):
-                with rarfile.RarFile(self.filepath) as rf:
-                    # Get list of image files
-                    images = [f for f in rf.namelist()
-                             if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
-                    images.sort()
-
-                    if images:
-                        # Read first image
-                        image_data = rf.read(images[0])
-                        self.cover_image = Image.open(BytesIO(image_data))
-                        return self.cover_image
-            else:
-                with zipfile.ZipFile(self.filepath, 'r') as zf:
-                    # Get list of image files
-                    images = [f for f in zf.namelist()
-                             if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
-                    images.sort()
-
-                    if images:
-                        # Read first image
-                        image_data = zf.read(images[0])
-                        self.cover_image = Image.open(BytesIO(image_data))
-                        return self.cover_image
+            image = Image.open(BytesIO(data))
+            self.current_page_index = page_index
+            return image
         except Exception as e:
-            print("Error extracting cover from {0}: {1}".format(self.filename, e))
-            self.error_msg = "Error extrayendo portada: {0}".format(str(e))
+            self.error_msg = "Error abriendo imagen: {0}".format(str(e))
             return None
 
 
@@ -425,10 +534,30 @@ class TebeoSferaGUI(tk.Tk):
 
         tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
 
-        # Cover preview
-        self.cover_label = tk.Label(right_frame, text="Selecciona un comic para ver su portada",
-                                    bg='gray90', width=40, height=20)
-        self.cover_label.pack(padx=5, pady=5)
+        # Cover preview container to keep size consistent
+        cover_container = tk.Frame(right_frame, width=450, height=650, bg='gray80', relief=tk.SUNKEN, bd=1)
+        cover_container.pack(padx=5, pady=5, fill=tk.BOTH, expand=False)
+        cover_container.pack_propagate(False)
+
+        self.cover_label = tk.Label(
+            cover_container,
+            text="Selecciona un comic para ver su portada\n(Vista previa ampliada)",
+            bg='gray90',
+            anchor=tk.CENTER,
+            justify=tk.CENTER
+        )
+        self.cover_label.pack(fill=tk.BOTH, expand=True)
+
+        page_nav_frame = tk.Frame(right_frame)
+        page_nav_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        self.prev_page_button = tk.Button(page_nav_frame, text="⬅ Página anterior",
+                                          command=self._show_prev_page, state=tk.DISABLED)
+        self.prev_page_button.pack(side=tk.LEFT, padx=2)
+        self.next_page_button = tk.Button(page_nav_frame, text="Página siguiente ➡",
+                                          command=self._show_next_page, state=tk.DISABLED)
+        self.next_page_button.pack(side=tk.LEFT, padx=2)
+        self.page_info_label = tk.Label(page_nav_frame, text="Página 0/0")
+        self.page_info_label.pack(side=tk.LEFT, padx=10)
 
         # Details frame
         details_frame = tk.Frame(right_frame)
@@ -445,6 +574,7 @@ class TebeoSferaGUI(tk.Tk):
 
         tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", command=self._search_current).pack(side=tk.LEFT, padx=2)
         tk.Button(button_frame, text="💾 Generar ComicInfo.xml", command=self._generate_xml_current).pack(side=tk.LEFT, padx=2)
+        tk.Button(button_frame, text="🌐 Abrir en navegador", command=self._open_current_in_browser).pack(side=tk.LEFT, padx=2)
         
         # Bottom panel - Log
         log_frame = tk.Frame(paned)
@@ -560,18 +690,7 @@ class TebeoSferaGUI(tk.Tk):
             return
 
         comic = self.comic_files[index]
-
-        # Extract and show cover
-        cover = comic.extract_cover()
-        if cover:
-            # Resize to fit
-            cover.thumbnail((400, 600), ANTIALIAS)
-            photo = ImageTk.PhotoImage(cover)
-            self.cover_label.config(image=photo, text='')
-            self.cover_label.image = photo  # Keep reference
-        else:
-            msg = comic.error_msg if comic.error_msg else 'No se pudo extraer la portada'
-            self.cover_label.config(image='', text=msg)
+        self._display_comic_page(comic, 0)
 
         # Show details
         details = "Archivo: {0}\n".format(comic.filename)
@@ -585,6 +704,58 @@ class TebeoSferaGUI(tk.Tk):
 
         self.details_text.delete('1.0', tk.END)
         self.details_text.insert('1.0', details)
+
+    def _display_comic_page(self, comic, page_index=None):
+        '''Display a specific page from the selected comic'''
+        image = comic.get_page_image(page_index)
+        if image:
+            preview_img = resize_image_for_preview(image, MAIN_PREVIEW_SIZE) or image
+            photo = ImageTk.PhotoImage(preview_img)
+            self.cover_label.config(image=photo, text='')
+            self.cover_label.image = photo
+            total = comic.total_pages or len(comic.image_entries) or 1
+            self.page_info_label.config(text=f"Página {comic.current_page_index + 1}/{total}")
+        else:
+            msg = comic.error_msg if comic.error_msg else 'No se pudo extraer la portada'
+            self.cover_label.config(image='', text=msg)
+            self.cover_label.image = None
+            self.page_info_label.config(text="Página 0/0")
+
+        self._update_page_buttons_state(comic)
+        return image is not None
+
+    def _update_page_buttons_state(self, comic):
+        total = comic.total_pages or len(comic.image_entries)
+        if total and total > 1:
+            self.prev_page_button.config(
+                state=tk.NORMAL if comic.current_page_index > 0 else tk.DISABLED)
+            self.next_page_button.config(
+                state=tk.NORMAL if comic.current_page_index < total - 1 else tk.DISABLED)
+        else:
+            self.prev_page_button.config(state=tk.DISABLED)
+            self.next_page_button.config(state=tk.DISABLED)
+
+    def _show_prev_page(self):
+        '''Show previous page of current comic'''
+        if self.current_comic_index < 0 or self.current_comic_index >= len(self.comic_files):
+            return
+        comic = self.comic_files[self.current_comic_index]
+        total = comic.total_pages or len(comic.image_entries)
+        if not total:
+            return
+        target = max(0, comic.current_page_index - 1)
+        self._display_comic_page(comic, target)
+
+    def _show_next_page(self):
+        '''Show next page of current comic'''
+        if self.current_comic_index < 0 or self.current_comic_index >= len(self.comic_files):
+            return
+        comic = self.comic_files[self.current_comic_index]
+        total = comic.total_pages or len(comic.image_entries)
+        if not total:
+            return
+        target = min(total - 1, comic.current_page_index + 1)
+        self._display_comic_page(comic, target)
 
     def _search_current(self):
         '''Search tebeosfera for current comic'''
@@ -838,6 +1009,37 @@ class TebeoSferaGUI(tk.Tk):
             self.db.close()
             self.destroy()
 
+    def _open_current_in_browser(self):
+        '''Open the selected comic's TebeoSfera page in browser'''
+        if self.current_comic_index < 0 or self.current_comic_index >= len(self.comic_files):
+            messagebox.showwarning("Advertencia", "Selecciona un comic primero")
+            return
+
+        comic = self.comic_files[self.current_comic_index]
+        url = None
+
+        if comic.metadata:
+            url = comic.metadata.get('webpage') or comic.metadata.get('webpage_s')
+            if not url:
+                collection_url = comic.metadata.get('collection_url')
+                if collection_url:
+                    url = build_series_url(collection_url)
+
+        if not url and getattr(comic, 'selected_issue', None):
+            url = build_issue_url(getattr(comic.selected_issue, 'issue_key', None))
+
+        if not url and getattr(comic, 'selected_issue', None):
+            # Fallback to series if available in issue metadata
+            series_key = getattr(comic.selected_issue, 'series_key', None)
+            if series_key:
+                url = build_series_url(series_key)
+
+        if url:
+            self._log(f"🌐 Abriendo en navegador: {url}")
+            webbrowser.open(url)
+        else:
+            messagebox.showinfo("Información", "No se pudo determinar la URL en TebeoSfera para este comic.")
+
     def _log(self, message):
         '''Add a message to the log'''
         timestamp = strftime('%H:%M:%S')
@@ -950,11 +1152,29 @@ class SearchDialog(tk.Toplevel):
         right_frame = tk.Frame(main_paned)
         main_paned.add(right_frame, minsize=300)
 
-        tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
+        tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
 
-        self.preview_label = tk.Label(right_frame, text="Selecciona un resultado para ver su portada",
-                                       bg='gray90', width=30, height=20)
-        self.preview_label.pack(padx=5, pady=5)
+        preview_container = tk.Frame(right_frame, width=450, height=650, bg='gray80', relief=tk.SUNKEN, bd=1)
+        preview_container.pack(padx=5, pady=5, fill=tk.BOTH, expand=False)
+        preview_container.pack_propagate(False)
+
+        self.preview_label = tk.Label(
+            preview_container,
+            text="Selecciona un resultado para ver su portada\n(Vista previa ampliada)",
+            bg='gray90',
+            anchor=tk.CENTER,
+            justify=tk.CENTER
+        )
+        self.preview_label.pack(fill=tk.BOTH, expand=True)
+
+        preview_actions = tk.Frame(right_frame)
+        preview_actions.pack(fill=tk.X, padx=5, pady=(0, 5))
+
+        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir serie", command=self._open_selected_series, state=tk.DISABLED)
+        self.open_series_button.pack(side=tk.LEFT, padx=2)
+
+        self.open_issue_button = tk.Button(preview_actions, text="🌐 Abrir issue", command=self._open_selected_issue, state=tk.DISABLED)
+        self.open_issue_button.pack(side=tk.LEFT, padx=2)
 
         # Info text
         self.info_text = tk.Text(right_frame, height=8, wrap=tk.WORD)
@@ -971,6 +1191,7 @@ class SearchDialog(tk.Toplevel):
         # Status label
         self.status_label = tk.Label(self, text="", fg='blue')
         self.status_label.pack(fill=tk.X, padx=10)
+        self._update_open_buttons()
 
     def _log(self, message):
         '''Add a message to the log (delegates to parent if available)'''
@@ -978,6 +1199,71 @@ class SearchDialog(tk.Toplevel):
             self.parent._log(message)
         else:
             print(f"[LOG] {message}")
+
+    def _fetch_reference_image_data(self, ref):
+        '''Fetch high-resolution image data for a SeriesRef or IssueRef'''
+        if not ref:
+            return None
+
+        extra_url = getattr(ref, 'extra_image_url', None)
+        if extra_url:
+            try:
+                data = self.db.connection.download_image(extra_url)
+                if data:
+                    return data
+            except Exception as e:
+                self._log(f"⚠️ Error descargando imagen extra: {e}")
+
+        try:
+            return self.db.query_image(ref)
+        except Exception as e:
+            self._log(f"⚠️ Error obteniendo imagen desde DB: {e}")
+            return None
+
+    def _update_open_buttons(self):
+        '''Enable/disable open buttons based on current selections'''
+        if hasattr(self, 'open_series_button'):
+            if self.selected_series:
+                self.open_series_button.config(state=tk.NORMAL)
+            else:
+                self.open_series_button.config(state=tk.DISABLED)
+
+        if hasattr(self, 'open_issue_button'):
+            if self.mode == 'issues' and self.selected_issue:
+                self.open_issue_button.config(state=tk.NORMAL)
+            else:
+                self.open_issue_button.config(state=tk.DISABLED)
+
+    def _open_selected_series(self):
+        '''Open selected series in browser'''
+        series_ref = self.selected_series
+        if not series_ref:
+            messagebox.showinfo("Información", "Selecciona una serie primero")
+            return
+
+        series_key = getattr(series_ref, 'series_key', None)
+        url = build_series_url(series_key)
+
+        if url:
+            self._log(f"🌐 Abriendo serie: {url}")
+            webbrowser.open(url)
+        else:
+            messagebox.showinfo("Información", "No se pudo determinar la URL de la serie seleccionada.")
+
+    def _open_selected_issue(self):
+        '''Open selected issue in browser'''
+        issue_ref = self.selected_issue
+        if not issue_ref:
+            messagebox.showinfo("Información", "Selecciona un issue primero")
+            return
+
+        url = build_issue_url(getattr(issue_ref, 'issue_key', None))
+
+        if url:
+            self._log(f"🌐 Abriendo issue: {url}")
+            webbrowser.open(url)
+        else:
+            messagebox.showinfo("Información", "No se pudo determinar la URL del issue seleccionado.")
 
     def _format_request_info(self, info):
         '''Format HTTP request metadata for display/logging'''
@@ -1067,6 +1353,9 @@ class SearchDialog(tk.Toplevel):
         query = self.search_entry.get().strip()
         if not query:
             return
+        self.selected_series = None
+        self.selected_issue = None
+        self._update_open_buttons()
 
         self.mode = 'series'
         self.back_button.config(state=tk.DISABLED)
@@ -1175,7 +1464,7 @@ class SearchDialog(tk.Toplevel):
             for i, result in enumerate(results):
                 try:
                     update_status(f"Descargando portada {i+1}/{len(results)}: {result.series_name_s}")
-                    image_data = self.db.query_image(result)
+                    image_data = self._fetch_reference_image_data(result)
                     if image_data:
                         image = Image.open(BytesIO(image_data))
                         self.downloaded_images.append(image)
@@ -1238,9 +1527,11 @@ class SearchDialog(tk.Toplevel):
         if self.mode == 'series' and index < len(self.search_results):
             self.selected_series = self.search_results[index]
             self._show_series_preview(self.selected_series)
+            self._update_open_buttons()
         elif self.mode == 'issues' and index < len(self.issues_list):
             self.selected_issue = self.issues_list[index]
             self._show_issue_preview(self.selected_issue)
+            self._update_open_buttons()
 
     def _on_double_click(self, event):
         '''Handle double-click on result'''
@@ -1263,14 +1554,13 @@ class SearchDialog(tk.Toplevel):
 
         # Load cover in background
         def load_cover():
-            image_data = self.db.query_image(series_ref)
+            image_data = self._fetch_reference_image_data(series_ref)
             if image_data:
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        # Resize to fit - larger preview
-                        image.thumbnail((450, 650), ANTIALIAS)
-                        photo = ImageTk.PhotoImage(image)
+                        preview_img = resize_image_for_preview(image, SEARCH_PREVIEW_SIZE) or image
+                        photo = ImageTk.PhotoImage(preview_img)
                         self.preview_label.config(image=photo, text='')
                         self.cover_images['current'] = photo  # Keep reference
                     except Exception as e:
@@ -1298,14 +1588,13 @@ class SearchDialog(tk.Toplevel):
 
         # Load cover in background
         def load_cover():
-            image_data = self.db.query_image(issue_ref)
+            image_data = self._fetch_reference_image_data(issue_ref)
             if image_data:
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        # Resize to fit - larger preview
-                        image.thumbnail((450, 650), ANTIALIAS)
-                        photo = ImageTk.PhotoImage(image)
+                        preview_img = resize_image_for_preview(image, SEARCH_PREVIEW_SIZE) or image
+                        photo = ImageTk.PhotoImage(preview_img)
                         self.preview_label.config(image=photo, text='')
                         self.cover_images['current'] = photo  # Keep reference
                     except Exception as e:
@@ -1328,6 +1617,8 @@ class SearchDialog(tk.Toplevel):
         self.back_button.config(state=tk.NORMAL)
         self.results_label.config(text="Issues de '{0}':".format(self.selected_series.series_name_s))
         self.select_button.config(text="✓ Seleccionar Issue", command=self._select_issue)
+        self.selected_issue = None
+        self._update_open_buttons()
 
         self.results_listbox.delete(0, tk.END)
         self.results_listbox.insert(tk.END, "Cargando issues...")
@@ -1375,7 +1666,7 @@ class SearchDialog(tk.Toplevel):
             # Download all issue covers
             for issue in issues:
                 try:
-                    image_data = self.db.query_image(issue)
+                    image_data = self._fetch_reference_image_data(issue)
                     if image_data:
                         image = Image.open(BytesIO(image_data))
                         self.downloaded_images.append(image)
@@ -1430,6 +1721,8 @@ class SearchDialog(tk.Toplevel):
         self.back_button.config(state=tk.DISABLED)
         self.results_label.config(text="Series encontradas:")
         self.select_button.config(text="Ver Issues →", command=self._view_issues)
+        self.selected_issue = None
+        self._update_open_buttons()
 
         # Restore series list with scores if available
         self.results_listbox.delete(0, tk.END)
