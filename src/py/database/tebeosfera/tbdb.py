@@ -118,25 +118,34 @@ class TebeoSferaDB(object):
                 if not series_name:
                     continue
                 
-                if series_name not in seen_series:
+                # Clean series name - sometimes it includes date/publisher in parens
+                # We want to group by the main name
+                base_series_name = series_name.split('(')[0].strip()
+                
+                # Use the full name with parens if available to distinguish different volumes
+                # but fallback to base name if needed
+                group_key = series_name
+                
+                if group_key not in seen_series:
                     # Get thumbnail URL from first issue
                     thumb_url = result.get('thumb_url')
                     if thumb_url and not thumb_url.startswith('http'):
                         thumb_url = 'https://www.tebeosfera.com' + thumb_url
                     
                     # Create a series key from the series name
-                    series_key = series_name.lower().replace(' ', '_').replace(',', '').replace(':', '')
+                    # Important: use a cleaner key generation
+                    series_key = group_key.lower().replace(' ', '_')
                     series_key = ''.join(c for c in series_key if c.isalnum() or c in '_-')
                     
-                    seen_series[series_name] = {
+                    seen_series[group_key] = {
                         'series_key': series_key,
-                        'series_name': series_name,
+                        'series_name': group_key,
                         'thumb_url': thumb_url,
                         'issue_count': 0,
                         'type': 'issue'
                     }
                 
-                seen_series[series_name]['issue_count'] += 1
+                seen_series[group_key]['issue_count'] += 1
                 
                 # Update thumbnail if this one is better (has http)
                 if result.get('thumb_url') and result.get('thumb_url').startswith('http'):

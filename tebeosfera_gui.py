@@ -1268,7 +1268,8 @@ class SearchDialog(tk.Toplevel):
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        image.thumbnail((300, 450), ANTIALIAS)
+                        # Resize to fit - larger preview
+                        image.thumbnail((450, 650), ANTIALIAS)
                         photo = ImageTk.PhotoImage(image)
                         self.preview_label.config(image=photo, text='')
                         self.cover_images['current'] = photo  # Keep reference
@@ -1302,7 +1303,8 @@ class SearchDialog(tk.Toplevel):
                 def show_cover():
                     try:
                         image = Image.open(BytesIO(image_data))
-                        image.thumbnail((300, 450), ANTIALIAS)
+                        # Resize to fit - larger preview
+                        image.thumbnail((450, 650), ANTIALIAS)
                         photo = ImageTk.PhotoImage(image)
                         self.preview_label.config(image=photo, text='')
                         self.cover_images['current'] = photo  # Keep reference
@@ -1446,6 +1448,9 @@ class SearchDialog(tk.Toplevel):
                 len(self.search_results), best_score))
         else:
             self.status_label.config(text="{0} series encontradas".format(len(self.search_results)))
+            
+        # Update preview label size info
+        self.preview_label.config(text="Selecciona un resultado para ver su portada\n(Vista previa ampliada)")
 
     def _select_issue(self):
         '''Select issue and fetch full metadata'''
