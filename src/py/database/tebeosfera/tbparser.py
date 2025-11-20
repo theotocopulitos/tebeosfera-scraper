@@ -36,6 +36,7 @@ class TebeoSferaParser(object):
         metadata = {
             # Basic info
             'title': None,
+            'synopsis': None,
             'series': None,
             'number': None,
             'count': None,
@@ -167,6 +168,66 @@ class TebeoSferaParser(object):
             genres_html = genres_match.group(1)
             genres = re.findall(r'<a[^>]*>([^<]+)</a>', genres_html)
             metadata['genres'] = [self._clean_text(g) for g in genres]
+        
+        # Extract promotional description / synopsis (multiple patterns)
+        # Pattern 1: "Información de la editorial:" section - capture ALL content including promo
+        # This is the most complete source, capturing everything from the description to the end
+        info_edit_match = re.search(
+            r'Información\s+de\s+la\s+editorial:\s*</p>(.*?)(?:<div[^>]*class="[^"]*tebeoafines|<h[234]|$)',
+            html_content, re.DOTALL | re.IGNORECASE
+        )
+        if info_edit_match:
+            synopsis = self._strip_tags(info_edit_match.group(1))
+            cleaned = self._clean_text(synopsis)
+            # Only use if it's substantial text (> 100 chars)
+            if cleaned and len(cleaned) > 100:
+                metadata['synopsis'] = cleaned
+        
+        # Pattern 2: "Promoción editorial:" - capture until next section or end
+        if not metadata.get('synopsis'):
+            promo_match = re.search(
+                r'<strong>Promoción editorial:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos))',
+                html_content, re.DOTALL | re.IGNORECASE
+            )
+            if promo_match:
+                synopsis = self._strip_tags(promo_match.group(1))
+                metadata['synopsis'] = self._clean_text(synopsis)
+        
+        # Pattern 3: "Argumento:" label - capture until next section
+        if not metadata.get('synopsis'):
+            arg_match = re.search(
+                r'<strong>Argumento:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos))',
+                html_content, re.DOTALL | re.IGNORECASE
+            )
+            if arg_match:
+                synopsis = self._strip_tags(arg_match.group(1))
+                metadata['synopsis'] = self._clean_text(synopsis)
+        
+        # Pattern 4: Text in <p class="texto"> (main description)
+        if not metadata.get('synopsis'):
+            desc_match = re.search(
+                r'<p class="texto"[^>]*>(.*?)</p>',
+                html_content, re.DOTALL | re.IGNORECASE
+            )
+            if desc_match:
+                description = self._strip_tags(desc_match.group(1))
+                cleaned_desc = self._clean_text(description)
+                if cleaned_desc and len(cleaned_desc) > 20:  # At least 20 chars
+                    metadata['synopsis'] = cleaned_desc
+        
+        # Pattern 5: Any paragraph after tab content (fallback)
+        if not metadata.get('synopsis'):
+            # Look for substantial text paragraphs
+            paragraphs = re.findall(
+                r'<p[^>]*>(.*?)</p>',
+                html_content, re.DOTALL | re.IGNORECASE
+            )
+            for para in paragraphs:
+                text = self._clean_text(self._strip_tags(para))
+                # Look for substantial paragraphs (> 50 chars, not just metadata)
+                if text and len(text) > 50 and not any(skip in text.lower() for skip in ['isbn', 'depósito', 'precio', 'páginas']):
+                    metadata['synopsis'] = text
+                    break
 
         # Extract cover image (the first/main one)
         cover_match = re.search(
@@ -197,9 +258,18 @@ class TebeoSferaParser(object):
                 metadata['day'], metadata['month'], metadata['year'] = date_parts
 
         # Extract volume year from series name if present
-        series_year_match = re.search(r'\((\d{4})', metadata.get('series', ''))
-        if series_year_match:
-            metadata['volume_year'] = int(series_year_match.group(1))
+        series_name = metadata.get('series') or ''
+        if series_name:
+            series_year_match = re.search(r'\((\d{4})', series_name)
+            if series_year_match:
+                metadata['volume_year'] = int(series_year_match.group(1))
+
+        # Log synopsis extraction for debugging
+        from utils_compat import log
+        if metadata.get('synopsis'):
+            log.debug(f"[OK] Synopsis extracted ({len(metadata['synopsis'])} chars): {metadata['synopsis'][:100]}...")
+        else:
+            log.debug("[WARN] No synopsis found in page")
 
         return metadata
 
@@ -321,7 +391,13 @@ class TebeoSferaParser(object):
             role = self._clean_text(match.group(1)).lower()
             name = self._clean_text(match.group(2))
 
-            if 'guion' in role:
+            # Historietista = guionista + dibujante
+            if 'historietista' in role:
+                if name not in metadata['writers']:
+                    metadata['writers'].append(name)
+                if name not in metadata['pencillers']:
+                    metadata['pencillers'].append(name)
+            elif 'guion' in role:
                 metadata['writers'].append(name)
             elif 'dibuj' in role:
                 metadata['pencillers'].append(name)

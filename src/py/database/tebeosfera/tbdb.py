@@ -8,7 +8,7 @@ the HTML parsing results to the standard Issue and Series model classes.
 '''
 
 from database.dbmodels import Issue, IssueRef, SeriesRef
-from .tbconnection import TebeoSferaConnection, get_connection
+from .tbconnection import TebeoSferaConnection, get_connection, build_issue_url
 from .tbparser import TebeoSferaParser
 from utils_compat import sstr, log
 
@@ -93,90 +93,49 @@ class TebeoSferaDB(object):
                     result.get('title', 'N/A')[:50], result.get('series_name', 'N/A')[:30]))
 
         series_refs = []
-        seen_series = {}  # Map series_name -> SeriesRef data
         
-        # Group issues by series name, and process collections/sagas
+        # Process results - DON'T group issues, show each individually
         for result in results:
-            if result['type'] in ['collection', 'saga']:
-                slug = result['slug']
-                series_name = result.get('series_name') or result.get('title', slug)
-                
-                if series_name not in seen_series:
-                    # Get thumbnail URL and ensure it's absolute
-                    thumb_url = result.get('thumb_url')
-                    if thumb_url and not thumb_url.startswith('http'):
-                        thumb_url = 'https://www.tebeosfera.com' + thumb_url
-                    image_url = result.get('image_url')
-                    if image_url and not image_url.startswith('http'):
-                        image_url = 'https://www.tebeosfera.com' + image_url
-
-                    seen_series[series_name] = {
-                        'series_key': slug,
-                        'series_name': series_name,
-                        'thumb_url': thumb_url,
-                        'image_url': image_url or thumb_url,
-                        'issue_count': 0,
-                        'type': result['type']  # 'collection' or 'saga'
-                    }
+            slug = result.get('slug')
+            result_type = result.get('type', 'collection')
             
-            elif result['type'] == 'issue':
-                series_name = result.get('series_name')
-                if not series_name:
-                    continue
-                
-                # Clean series name - sometimes it includes date/publisher in parens
-                # We want to group by the main name (before parentheses or dash)
-                base_series_name = series_name.split('(')[0].split('-')[0].strip()
-                group_key = base_series_name if base_series_name else series_name.strip()
-                display_name = series_name.strip() or group_key
-                
-                if group_key not in seen_series:
-                    # Get thumbnail URL from first issue
-                    thumb_url = result.get('thumb_url')
-                    if thumb_url and not thumb_url.startswith('http'):
-                        thumb_url = 'https://www.tebeosfera.com' + thumb_url
-                    image_url = result.get('image_url')
-                    if image_url and not image_url.startswith('http'):
-                        image_url = 'https://www.tebeosfera.com' + image_url
-                    
-                    # Create a series key from the grouping key
-                    series_key = group_key.lower().replace(' ', '_')
-                    series_key = ''.join(c for c in series_key if c.isalnum() or c in '_-')
-                    
-                    seen_series[group_key] = {
-                        'series_key': series_key,
-                        'series_name': display_name,
-                        'thumb_url': thumb_url,
-                        'image_url': image_url or thumb_url,
-                        'issue_count': 0,
-                        'type': 'issue'
-                    }
-                
-                seen_series[group_key]['issue_count'] += 1
-                
-                # Update thumbnail if this one is better (has http)
-                if result.get('thumb_url') and result.get('thumb_url').startswith('http'):
-                    seen_series[group_key]['thumb_url'] = result.get('thumb_url')
-                if result.get('image_url') and result.get('image_url').startswith('http'):
-                    seen_series[group_key]['image_url'] = result.get('image_url')
-
-        # Convert to SeriesRef objects
-        for series_name, series_data in seen_series.items():
-            thumb_url = series_data.get('thumb_url', '')
+            # Get thumbnail URL and ensure it's absolute
+            thumb_url = result.get('thumb_url')
             if thumb_url and not thumb_url.startswith('http'):
                 thumb_url = 'https://www.tebeosfera.com' + thumb_url
+            image_url = result.get('image_url')
+            if image_url and not image_url.startswith('http'):
+                image_url = 'https://www.tebeosfera.com' + image_url
             
+            if result_type in ['collection', 'saga']:
+                # Collections and sagas are shown as-is (they are series/groups)
+                series_name = result.get('series_name') or result.get('title', slug)
+                series_key = slug
+                issue_count = 0  # Unknown for collections/sagas
+                
+            elif result_type == 'issue':
+                # Issues are shown individually with their full title
+                # Use the FULL title from the result, not just the series name
+                full_title = result.get('title', '')
+                series_name = full_title if full_title else result.get('series_name', slug)
+                series_key = slug  # Use the issue slug as the key
+                issue_count = 1  # It's a single issue
+            
+            else:
+                continue
+            
+            # Create SeriesRef for this result
             series_ref = SeriesRef(
-                series_key=series_data['series_key'],
-                series_name_s=series_data['series_name'],
-                volume_year_n=-1,  # Will be populated when querying series details
+                series_key=series_key,
+                series_name_s=series_name,
+                volume_year_n=-1,
                 publisher_s='',
-                issue_count_n=series_data['issue_count'],
+                issue_count_n=issue_count,
                 thumb_url_s=thumb_url
             )
             # Set extended fields
-            series_ref.type_s = series_data.get('type', 'collection')
-            series_ref.extra_image_url = series_data.get('image_url')
+            series_ref.type_s = result_type
+            series_ref.extra_image_url = image_url or thumb_url
             series_refs.append(series_ref)
 
         log.debug("Found {0} series in TebeoSfera (from {1} results: {2} issues, {3} collections, {4} sagas)".format(
@@ -264,6 +223,9 @@ class TebeoSferaDB(object):
         if not metadata:
             log.debug("Could not parse issue page")
             return None
+
+        # Add page URL to metadata (constructed from issue_key)
+        metadata['page_url'] = build_issue_url(issue_ref.issue_key)
 
         # Create Issue object from parsed metadata
         issue = self._create_issue_from_metadata(issue_ref, metadata)

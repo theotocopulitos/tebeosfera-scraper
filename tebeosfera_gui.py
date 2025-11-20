@@ -141,6 +141,11 @@ def extract_title_from_filename(filename):
     # Remove extension
     name = os.path.splitext(filename)[0]
     
+    # Remove content in brackets and parentheses (tags, metadata, etc.)
+    # Examples: [Editorial], (2020), [Digital], (c2c)
+    name = re.sub(r'\[.*?\]', '', name)  # Remove [anything]
+    name = re.sub(r'\(.*?\)', '', name)  # Remove (anything)
+    
     # Remove common patterns
     # Remove leading numbers (reading order)
     name = re.sub(r'^\d+[.\s\-_]+', '', name)
@@ -532,17 +537,21 @@ class TebeoSferaGUI(tk.Tk):
         right_frame = tk.Frame(top_paned)
         top_paned.add(right_frame, minsize=400)
 
-        # ========== SECCIÓN 1: PORTADA (aspect ratio vertical típico: 2:3) ==========
+        # ========== SECCIÓN 1: PORTADA + METADATOS (dividido verticalmente) ==========
         preview_section = tk.Frame(right_frame)
         preview_section.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         tk.Label(preview_section, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
         
-        # Canvas para la imagen - se ajusta al área disponible
-        canvas_frame = tk.Frame(preview_section, bg='gray80', relief=tk.SUNKEN, bd=2)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, pady=(0,5))
+        # PanedWindow para dividir portada (izquierda) y metadatos (derecha)
+        preview_paned = tk.PanedWindow(preview_section, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        preview_paned.pack(fill=tk.BOTH, expand=True, pady=(0,5))
         
-        self.cover_canvas = tk.Canvas(canvas_frame, bg='gray90', highlightthickness=0)
+        # ===== IZQUIERDA: PORTADA =====
+        cover_frame = tk.Frame(preview_paned, bg='gray80', relief=tk.SUNKEN, bd=2)
+        preview_paned.add(cover_frame, minsize=200)
+        
+        self.cover_canvas = tk.Canvas(cover_frame, bg='gray90', highlightthickness=0)
         self.cover_canvas.pack(fill=tk.BOTH, expand=True)
         
         # Placeholder text
@@ -554,6 +563,46 @@ class TebeoSferaGUI(tk.Tk):
         
         # Keep a reference for the label (needed for image persistence)
         self.cover_label = tk.Label(self.cover_canvas)  # Dummy label for image reference
+        
+        # ===== DERECHA: METADATOS EXISTENTES =====
+        metadata_frame = tk.Frame(preview_paned)
+        preview_paned.add(metadata_frame, minsize=200)
+        
+        # Header con título y toggle XML/Bonito
+        metadata_header = tk.Frame(metadata_frame)
+        metadata_header.pack(fill=tk.X, padx=5, pady=5)
+        
+        tk.Label(metadata_header, text="Metadatos en archivo:", font=('Arial', 9, 'bold')).pack(side=tk.LEFT)
+        
+        self.metadata_view_mode = tk.StringVar(value="pretty")  # "xml" or "pretty"
+        tk.Button(metadata_header, text="XML", command=lambda: self._toggle_metadata_view("xml"),
+                 width=6, relief=tk.RAISED).pack(side=tk.RIGHT, padx=2)
+        tk.Button(metadata_header, text="Bonito", command=lambda: self._toggle_metadata_view("pretty"),
+                 width=6, relief=tk.SUNKEN).pack(side=tk.RIGHT, padx=2)
+        
+        # Store button references for styling
+        self.metadata_xml_button = None
+        self.metadata_pretty_button = None
+        # Get references after packing
+        for widget in metadata_header.winfo_children():
+            if isinstance(widget, tk.Button):
+                if widget['text'] == "XML":
+                    self.metadata_xml_button = widget
+                elif widget['text'] == "Bonito":
+                    self.metadata_pretty_button = widget
+        
+        metadata_text_frame = tk.Frame(metadata_frame)
+        metadata_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('Courier', 9))
+        metadata_scrollbar = tk.Scrollbar(metadata_text_frame, command=self.metadata_display.yview)
+        self.metadata_display.config(yscrollcommand=metadata_scrollbar.set, state=tk.DISABLED)
+        metadata_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.metadata_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Store current metadata for toggling
+        self.current_metadata_xml = None
+        self.current_metadata_dict = None
 
         # ========== SECCIÓN 2: NAVEGACIÓN DE PÁGINAS ==========
         page_nav_frame = tk.Frame(right_frame, relief=tk.GROOVE, bd=2)
@@ -729,8 +778,11 @@ class TebeoSferaGUI(tk.Tk):
         comic.load_image_entries()
         self._log(f"📚 Cómic seleccionado: {comic.filename} ({comic.total_pages} páginas)")
         
-        # Display first page
+        # Display first page (portada)
         self._display_comic_page(comic, 0)
+        
+        # Display existing metadata from file
+        self._display_existing_metadata(comic)
 
         # Show details
         details = "Archivo: {0}\n".format(comic.filename)
@@ -745,6 +797,157 @@ class TebeoSferaGUI(tk.Tk):
 
         self.details_text.delete('1.0', tk.END)
         self.details_text.insert('1.0', details)
+    
+    def _display_existing_metadata(self, comic):
+        '''Display existing ComicInfo.xml metadata from the comic file'''
+        self.metadata_display.config(state=tk.NORMAL)
+        self.metadata_display.delete('1.0', tk.END)
+        
+        try:
+            metadata_xml = self._extract_comicinfo(comic.filepath)
+            
+            if metadata_xml:
+                # Store for toggling
+                self.current_metadata_xml = metadata_xml
+                
+                # Parse XML to dictionary
+                self.current_metadata_dict = self._parse_comicinfo_xml(metadata_xml)
+                
+                # Display in current mode
+                self._render_metadata_view()
+                
+                self._log("📋 ComicInfo.xml encontrado en el archivo")
+            else:
+                self.current_metadata_xml = None
+                self.current_metadata_dict = None
+                self.metadata_display.insert('1.0', "No se encontró ComicInfo.xml\nen este archivo.\n\nPuedes agregar metadatos\nbuscando en TebeoSfera.")
+        
+        except Exception as e:
+            self.current_metadata_xml = None
+            self.current_metadata_dict = None
+            self.metadata_display.insert('1.0', f"Error leyendo metadatos:\n{str(e)}")
+        
+        self.metadata_display.config(state=tk.DISABLED)
+    
+    def _parse_comicinfo_xml(self, xml_string):
+        '''Parse ComicInfo.xml to a dictionary'''
+        import xml.etree.ElementTree as ET
+        metadata = {}
+        
+        try:
+            root = ET.fromstring(xml_string)
+            for child in root:
+                if child.text and child.text.strip():
+                    metadata[child.tag] = child.text.strip()
+        except:
+            pass
+        
+        return metadata
+    
+    def _toggle_metadata_view(self, mode):
+        '''Toggle between XML and Pretty view'''
+        self.metadata_view_mode.set(mode)
+        
+        # Update button styles
+        if self.metadata_xml_button and self.metadata_pretty_button:
+            if mode == "xml":
+                self.metadata_xml_button.config(relief=tk.SUNKEN)
+                self.metadata_pretty_button.config(relief=tk.RAISED)
+            else:
+                self.metadata_xml_button.config(relief=tk.RAISED)
+                self.metadata_pretty_button.config(relief=tk.SUNKEN)
+        
+        self._render_metadata_view()
+    
+    def _render_metadata_view(self):
+        '''Render metadata in current view mode'''
+        if not self.current_metadata_xml and not self.current_metadata_dict:
+            return
+        
+        self.metadata_display.config(state=tk.NORMAL)
+        self.metadata_display.delete('1.0', tk.END)
+        
+        mode = self.metadata_view_mode.get()
+        
+        if mode == "xml":
+            # Show formatted XML
+            import xml.dom.minidom as minidom
+            try:
+                dom = minidom.parseString(self.current_metadata_xml)
+                formatted_xml = dom.toprettyxml(indent="  ")
+                # Remove extra blank lines
+                formatted_xml = '\n'.join([line for line in formatted_xml.split('\n') if line.strip()])
+                self.metadata_display.insert('1.0', formatted_xml)
+            except:
+                # If parsing fails, just show raw XML
+                self.metadata_display.insert('1.0', self.current_metadata_xml)
+        
+        else:  # pretty mode
+            # Show formatted key-value pairs
+            if self.current_metadata_dict:
+                # Field mapping for better display
+                field_labels = {
+                    'Title': '📖 Título',
+                    'Series': '📚 Serie',
+                    'Number': '🔢 Número',
+                    'Count': '📊 Total',
+                    'Volume': '📙 Volumen',
+                    'Summary': '📝 Resumen',
+                    'Notes': '📋 Notas',
+                    'Publisher': '🏢 Editorial',
+                    'Imprint': '🏷️ Sello',
+                    'Genre': '🎭 Género',
+                    'Web': '🌐 Web',
+                    'PageCount': '📄 Páginas',
+                    'LanguageISO': '🌍 Idioma',
+                    'Format': '📐 Formato',
+                    'AgeRating': '🔞 Edad',
+                    'Writer': '✍️ Guionista',
+                    'Penciller': '🖊️ Dibujante',
+                    'Inker': '🖋️ Entintador',
+                    'Colorist': '🎨 Colorista',
+                    'Letterer': '✒️ Letrista',
+                    'CoverArtist': '🖼️ Portadista',
+                    'Editor': '📝 Editor',
+                    'Translator': '🔤 Traductor',
+                    'Year': '📅 Año',
+                    'Month': '📅 Mes',
+                    'Day': '📅 Día',
+                }
+                
+                output = []
+                for key, value in self.current_metadata_dict.items():
+                    label = field_labels.get(key, key)
+                    
+                    # Special handling for long fields
+                    if key in ['Summary', 'Notes']:
+                        output.append(f"\n{label}:\n{value}\n")
+                    else:
+                        output.append(f"{label}: {value}")
+                
+                self.metadata_display.insert('1.0', '\n'.join(output))
+            else:
+                self.metadata_display.insert('1.0', "No se pudieron parsear los metadatos")
+        
+        self.metadata_display.config(state=tk.DISABLED)
+    
+    def _extract_comicinfo(self, filepath):
+        '''Extract ComicInfo.xml from CBZ/CBR file'''
+        try:
+            if filepath.lower().endswith('.cbz') and zipfile.is_zipfile(filepath):
+                with zipfile.ZipFile(filepath, 'r') as zf:
+                    if 'ComicInfo.xml' in zf.namelist():
+                        return zf.read('ComicInfo.xml').decode('utf-8')
+            
+            elif rarfile and filepath.lower().endswith('.cbr') and rarfile.is_rarfile(filepath):
+                with rarfile.RarFile(filepath, 'r') as rf:
+                    if 'ComicInfo.xml' in rf.namelist():
+                        return rf.read('ComicInfo.xml').decode('utf-8')
+        
+        except Exception as e:
+            self._log(f"⚠️ Error extrayendo ComicInfo.xml: {e}")
+        
+        return None
 
     def _display_comic_page(self, comic, page_index=None):
         '''Display a specific page from the selected comic'''
@@ -916,7 +1119,7 @@ class TebeoSferaGUI(tk.Tk):
             messagebox.showerror("Error", "Error generando XML: {0}".format(e))
 
     def _convert_cbr_to_cbz(self, cbr_path):
-        '''Convert CBR to CBZ'''
+        '''Convert CBR to CBZ (ZIP without compression)'''
         import shutil
         
         cbz_path = os.path.splitext(cbr_path)[0] + '.cbz'
@@ -924,27 +1127,36 @@ class TebeoSferaGUI(tk.Tk):
         
         try:
             self._update_status("Convirtiendo CBR a CBZ...")
+            self._log("📦 Extrayendo CBR...")
             
             # Extract CBR
             with rarfile.RarFile(cbr_path) as rf:
                 rf.extractall(temp_dir)
-                
-            # Create CBZ
-            with zipfile.ZipFile(cbz_path, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+            
+            self._log("📦 Creando CBZ sin compresión...")
+            # Create CBZ WITHOUT compression (ZIP_STORED)
+            # CBZ files are typically uncompressed to allow direct image access
+            with zipfile.ZipFile(cbz_path, 'w', zipfile.ZIP_STORED) as zip_out:
                 for root, dirs, files in os.walk(temp_dir):
+                    # Sort files to maintain page order
+                    files.sort()
                     for file in files:
                         file_path = os.path.join(root, file)
                         arcname = os.path.relpath(file_path, temp_dir)
+                        self._log(f"  Añadiendo: {arcname}")
                         zip_out.write(file_path, arcname)
             
             # Delete original CBR if successful
             if os.path.exists(cbz_path):
+                self._log(f"✅ CBZ creado: {os.path.basename(cbz_path)}")
+                self._log(f"🗑️ Eliminando CBR original...")
                 os.remove(cbr_path)
                 return cbz_path
                 
             return None
             
         except Exception as e:
+            self._log(f"❌ Error convirtiendo CBR a CBZ: {e}")
             print("Error converting CBR to CBZ: {0}".format(e))
             # Cleanup incomplete CBZ
             if os.path.exists(cbz_path):
@@ -958,22 +1170,29 @@ class TebeoSferaGUI(tk.Tk):
                 pass
 
     def _inject_xml(self, cbz_path, xml_content):
-        '''Inject ComicInfo.xml into CBZ file'''
+        '''Inject ComicInfo.xml into CBZ file (without compression)'''
         import shutil
         temp_dir = tempfile.mkdtemp()
         temp_cbz = os.path.join(temp_dir, 'temp.cbz')
 
         try:
+            self._log("📝 Inyectando ComicInfo.xml...")
             with zipfile.ZipFile(cbz_path, 'r') as zip_in:
-                with zipfile.ZipFile(temp_cbz, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+                # Use ZIP_STORED (no compression) for CBZ
+                with zipfile.ZipFile(temp_cbz, 'w', zipfile.ZIP_STORED) as zip_out:
+                    # Copy all existing files except old ComicInfo.xml
                     for item in zip_in.infolist():
                         if item.filename != 'ComicInfo.xml':
                             data = zip_in.read(item.filename)
+                            # Preserve original compression info
                             zip_out.writestr(item, data)
 
-                    zip_out.writestr('ComicInfo.xml', xml_content.encode('utf-8'))
+                    # Add ComicInfo.xml without compression
+                    zip_out.writestr('ComicInfo.xml', xml_content.encode('utf-8'), 
+                                   compress_type=zipfile.ZIP_STORED)
 
             shutil.move(temp_cbz, cbz_path)
+            self._log("✅ ComicInfo.xml inyectado correctamente")
 
         finally:
             try:
@@ -1324,6 +1543,12 @@ class SearchDialog(tk.Toplevel):
         if hasattr(self, 'open_series_button'):
             if self.selected_series:
                 self.open_series_button.config(state=tk.NORMAL)
+                # Cambiar texto del botón según el tipo
+                result_type = getattr(self.selected_series, 'type_s', 'collection')
+                if result_type == 'issue':
+                    self.open_series_button.config(text="🌐 Abrir ejemplar")
+                else:
+                    self.open_series_button.config(text="🌐 Abrir serie")
             else:
                 self.open_series_button.config(state=tk.DISABLED)
 
@@ -1334,20 +1559,28 @@ class SearchDialog(tk.Toplevel):
                 self.open_issue_button.config(state=tk.DISABLED)
 
     def _open_selected_series(self):
-        '''Open selected series in browser'''
+        '''Open selected series/issue in browser'''
         series_ref = self.selected_series
         if not series_ref:
             messagebox.showinfo("Información", "Selecciona una serie primero")
             return
 
         series_key = getattr(series_ref, 'series_key', None)
-        url = build_series_url(series_key)
+        result_type = getattr(series_ref, 'type_s', 'collection')
+        
+        # Si es un issue individual, usar URL de issue
+        if result_type == 'issue':
+            url = build_issue_url(series_key)
+            tipo = "ejemplar"
+        else:
+            url = build_series_url(series_key)
+            tipo = "serie"
 
         if url:
-            self._log(f"🌐 Abriendo serie: {url}")
+            self._log(f"🌐 Abriendo {tipo}: {url}")
             webbrowser.open(url)
         else:
-            messagebox.showinfo("Información", "No se pudo determinar la URL de la serie seleccionada.")
+            messagebox.showinfo("Información", f"No se pudo determinar la URL del {tipo} seleccionado.")
 
     def _open_selected_issue(self):
         '''Open selected issue in browser'''
@@ -1649,6 +1882,16 @@ class SearchDialog(tk.Toplevel):
             self.selected_series = self.search_results[index]
             self._show_series_preview(self.selected_series)
             self._update_open_buttons()
+            
+            # Update button based on type
+            result_type = getattr(self.selected_series, 'type_s', 'collection')
+            if result_type == 'issue':
+                # Es un issue individual, cambiar botón
+                self.select_button.config(text="Ver Ejemplar →", command=self._view_single_issue)
+            else:
+                # Es una colección/saga, mantener botón original
+                self.select_button.config(text="Ver Issues →", command=self._view_issues)
+                
         elif self.mode == 'issues' and index < len(self.issues_list):
             self.selected_issue = self.issues_list[index]
             self._show_issue_preview(self.selected_issue)
@@ -1657,7 +1900,13 @@ class SearchDialog(tk.Toplevel):
     def _on_double_click(self, event):
         '''Handle double-click on result'''
         if self.mode == 'series':
-            self._view_issues()
+            # Check if it's an individual issue
+            if self.selected_series:
+                result_type = getattr(self.selected_series, 'type_s', 'collection')
+                if result_type == 'issue':
+                    self._view_single_issue()
+                else:
+                    self._view_issues()
         elif self.mode == 'issues':
             self._select_issue()
 
@@ -1910,6 +2159,37 @@ class SearchDialog(tk.Toplevel):
         thread.daemon = True
         thread.start()
 
+    def _view_single_issue(self):
+        '''View a single issue (when the search result IS an issue)'''
+        if not self.selected_series:
+            messagebox.showwarning("Advertencia", "Selecciona un ejemplar primero")
+            return
+        
+        # El selected_series es en realidad un issue
+        # Crear un IssueRef a partir del SeriesRef
+        from database.dbmodels import IssueRef
+        
+        # Extraer información del SeriesRef que representa un issue
+        issue_key = self.selected_series.series_key
+        issue_title = self.selected_series.series_name_s
+        thumb_url = self.selected_series.thumb_url_s
+        
+        # Crear un IssueRef temporal
+        issue_ref = IssueRef(
+            issue_num_s="1",  # No tenemos el número real
+            issue_key=issue_key,
+            title_s=issue_title,
+            thumb_url_s=thumb_url
+        )
+        
+        # Copiar el extra_image_url si existe
+        if hasattr(self.selected_series, 'extra_image_url'):
+            issue_ref.extra_image_url = self.selected_series.extra_image_url
+        
+        # Seleccionar este issue directamente
+        self.selected_issue = issue_ref
+        self._select_issue()
+
     def _back_to_series(self):
         '''Go back to series search results'''
         self.mode = 'series'
@@ -1977,6 +2257,12 @@ class SearchDialog(tk.Toplevel):
 
     def _issue_to_metadata_dict(self, issue):
         '''Convert Issue object to metadata dictionary'''
+        # Debug: log summary content
+        if issue.summary_s:
+            self._log(f"[OK] Summary presente en Issue: {len(issue.summary_s)} chars - {issue.summary_s[:50]}...")
+        else:
+            self._log("[WARN] Summary vacio en Issue")
+        
         metadata = {
             'title': issue.title_s,
             'series': issue.series_name_s,
@@ -1988,27 +2274,27 @@ class SearchDialog(tk.Toplevel):
             'year': issue.pub_year_n if issue.pub_year_n > 0 else None,
             'month': issue.pub_month_n if issue.pub_month_n > 0 else None,
             'day': issue.pub_day_n if issue.pub_day_n > 0 else None,
-            'writers': issue.writers_sl,
-            'pencillers': issue.pencillers_sl,
-            'inkers': issue.inkers_sl,
-            'colorists': issue.colorists_sl,
-            'letterers': issue.letterers_sl,
-            'cover_artists': issue.cover_artists_sl,
-            'editors': issue.editors_sl,
-            'translators': issue.translators_sl,
-            'genres': issue.crossovers_sl,  # Genres stored in crossovers
-            'characters': issue.characters_sl,
+            'writer': issue.writers_sl,
+            'penciller': issue.pencillers_sl,
+            'inker': issue.inkers_sl,
+            'colorist': issue.colorists_sl,
+            'letterer': issue.letterers_sl,
+            'cover_artist': issue.cover_artists_sl,
+            'editor': issue.editors_sl,
+            'translator': issue.translators_sl,
+            'genre': ', '.join(issue.crossovers_sl) if issue.crossovers_sl else None,  # Genres stored in crossovers
+            'characters': ', '.join(issue.characters_sl) if issue.characters_sl else None,
             'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
-            'language': issue.language_s,
+            'language_iso': 'es',  # Default Spanish
             'format': issue.format_s,
             'binding': issue.binding_s,
             'dimensions': issue.dimensions_s,
             'isbn': issue.isbn_s,
             'legal_deposit': issue.legal_deposit_s,
             'price': issue.price_s,
-            'origin_title': issue.origin_title_s,
-            'origin_publisher': issue.origin_publisher_s,
-            'webpage': issue.webpage_s
+            'original_title': issue.origin_title_s,
+            'original_publisher': issue.origin_publisher_s,
+            'web': issue.webpage_s  # Changed from 'webpage' to 'web'
         }
         return metadata
 

@@ -354,7 +354,7 @@ class TebeoSferaConnection(object):
         }
 
 
-# Module-level convenience function
+# Module-level convenience functions
 _connection = None
 
 def get_connection():
@@ -367,3 +367,63 @@ def get_connection():
     if _connection is None:
         _connection = TebeoSferaConnection()
     return _connection
+
+
+def build_series_url(series_key_or_path):
+    '''
+    Build absolute URL for a series page.
+    
+    Args:
+        series_key_or_path: Series key (e.g., 'tintin_1958_juventud') or path
+        
+    Returns:
+        Full URL to the series page on tebeosfera.com
+    '''
+    if not series_key_or_path:
+        return None
+    
+    path = series_key_or_path.strip()
+    
+    # If already a full URL, return as-is
+    if path.startswith('http'):
+        return path
+    
+    # If not starting with /, assume it's a slug and prepend /colecciones/
+    if not path.startswith('/'):
+        path = f"/colecciones/{path}"
+    
+    # If starts with /, just append to base URL
+    if not path.endswith('.html'):
+        path += '.html'
+    
+    return TebeoSferaConnection.BASE_URL + path
+
+
+def build_issue_url(issue_key_or_path):
+    '''
+    Build absolute URL for an issue page.
+    
+    Args:
+        issue_key_or_path: Issue key (e.g., 'tintin_1958_juventud_1') or path
+        
+    Returns:
+        Full URL to the issue page on tebeosfera.com
+    '''
+    if not issue_key_or_path:
+        return None
+    
+    path = issue_key_or_path.strip()
+    
+    # If already a full URL, return as-is
+    if path.startswith('http'):
+        return path
+    
+    # If not starting with /, assume it's a slug and prepend /numeros/
+    if not path.startswith('/'):
+        path = f"/numeros/{path}"
+    
+    # Ensure .html extension
+    if not path.endswith('.html'):
+        path += '.html'
+    
+    return TebeoSferaConnection.BASE_URL + path
