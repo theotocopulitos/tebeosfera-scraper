@@ -19,10 +19,15 @@ class TebeoSferaDB(object):
     compatible with the existing scraper architecture.
     '''
 
-    def __init__(self):
-        '''Initialize the TebeoSfera database adapter'''
+    def __init__(self, log_callback=None):
+        '''
+        Initialize the TebeoSfera database adapter
+        
+        Args:
+            log_callback: Optional function to call for logging (takes a string message)
+        '''
         self.connection = get_connection()
-        self.parser = TebeoSferaParser()
+        self.parser = TebeoSferaParser(log_callback=log_callback)
 
     def search_series(self, search_terms):
         '''

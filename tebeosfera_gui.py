@@ -394,10 +394,6 @@ class TebeoSferaGUI(tk.Tk):
         self.title("TebeoSfera Scraper - Comic Metadata Editor")
         self.geometry("1200x800")
 
-        # Initialize scraper
-        self.db = TebeoSferaDB()
-        self.xml_generator = ComicInfoGenerator()
-
         # Comic files list
         self.comic_files = []
         self.current_comic_index = 0
@@ -405,11 +401,15 @@ class TebeoSferaGUI(tk.Tk):
         # Thread-safe queue for UI updates
         self.update_queue = queue.Queue()
 
-        # Create UI
+        # Create UI first (so log_text is available)
         self._create_menu()
         self._create_toolbar()
         self._create_main_panel()
         self._create_status_bar()
+
+        # Initialize scraper with log callback (after UI is created)
+        self.db = TebeoSferaDB(log_callback=self._log)
+        self.xml_generator = ComicInfoGenerator()
 
         # Start queue processor
         self.after(100, self._process_queue)
@@ -1355,17 +1355,32 @@ class TebeoSferaGUI(tk.Tk):
             messagebox.showinfo("Información", "No se pudo determinar la URL en TebeoSfera para este comic.")
 
     def _log(self, message):
-        '''Add a message to the log'''
+        '''Add a message to the log (thread-safe)'''
         timestamp = strftime('%H:%M:%S')
         log_entry = f"[{timestamp}] {message}\n"
         
-        self.log_text.config(state=tk.NORMAL)
-        self.log_text.insert(tk.END, log_entry)
-        self.log_text.see(tk.END)
-        self.log_text.config(state=tk.DISABLED)
+        # Use after() to ensure we're in the main thread
+        def update_log():
+            try:
+                self.log_text.config(state=tk.NORMAL)
+                self.log_text.insert(tk.END, log_entry)
+                self.log_text.see(tk.END)
+                self.log_text.config(state=tk.DISABLED)
+            except:
+                pass  # Widget might not exist yet
         
-        # Also print to console
+        # Always print to console (works from any thread)
         print(log_entry.strip())
+        
+        # Update GUI in main thread
+        try:
+            self.after(0, update_log)
+        except:
+            # If after() fails, try direct update (we might be in main thread)
+            try:
+                update_log()
+            except:
+                pass
 
     def _clear_log(self):
         '''Clear the log'''

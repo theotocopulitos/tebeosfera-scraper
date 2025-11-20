@@ -19,9 +19,33 @@ class TebeoSferaParser(object):
     Extracts comic book metadata from issue detail pages.
     '''
 
-    def __init__(self):
-        '''Initialize the parser'''
-        pass
+    def __init__(self, log_callback=None):
+        '''
+        Initialize the parser
+        
+        Args:
+            log_callback: Optional function to call for logging (takes a string message)
+        '''
+        self.log_callback = log_callback
+        # Test the callback
+        if self.log_callback:
+            try:
+                self.log_callback("[SYNOPSIS] Parser initialized with log callback")
+            except:
+                pass
+    
+    def _log(self, message):
+        '''Log a message using callback if available, otherwise use utils_compat.log'''
+        if self.log_callback:
+            try:
+                self.log_callback(message)
+            except Exception as e:
+                # Fallback to console if callback fails
+                from utils_compat import log
+                log.debug(f"[CALLBACK ERROR] {e}: {message}")
+        else:
+            from utils_compat import log
+            log.debug(message)
 
     def parse_issue_page(self, html_content):
         '''
@@ -170,64 +194,370 @@ class TebeoSferaParser(object):
             metadata['genres'] = [self._clean_text(g) for g in genres]
         
         # Extract promotional description / synopsis (multiple patterns)
+        # Pattern 0: "Comentario de la editorial:" - very specific and reliable
+        # This usually contains the actual synopsis/plot description
+        # Also capture relevant technical info (pages, translation) that comes before it
+        comentario_match = re.search(r'Comentario\s+de\s+la\s+editorial:', html_content, re.IGNORECASE)
+        if comentario_match:
+            self._log("[SYNOPSIS] Trying Pattern 0: 'Comentario de la editorial:'")
+            comentario_start = comentario_match.start()
+            
+            # Look backwards to find relevant technical info (pages, translation, etc.)
+            # Search for paragraphs before "Comentario" that contain book info but not paper/printing info
+            before_text = html_content[max(0, comentario_start - 2000):comentario_start]
+            before_paras = re.findall(r'<p[^>]*>(.*?)</p>', before_text, re.DOTALL | re.IGNORECASE)
+            
+            relevant_before = []
+            skip_after_keywords = ['papel', 'bosques', 'gestionados', 'sostenible', 'impreso', 'italia', 'spa', 'leg']
+            good_before_keywords = ['páginas', 'traducción', 'encuadernado', 'tapa', 'cartoné', 'editorial', 'rotulación', 'editor']
+            
+            for para in reversed(before_paras):  # Start from closest to comentario
+                text = self._clean_text(self._strip_tags(para))
+                if text and len(text) > 30:
+                    text_lower = text.lower()
+                    # Skip if it's about paper/printing (comes after comentario)
+                    if any(skip in text_lower for skip in skip_after_keywords):
+                        break  # Stop looking backwards if we hit paper info
+                    # Include if it has book info keywords
+                    if any(good in text_lower for good in good_before_keywords):
+                        relevant_before.insert(0, text)  # Add at beginning to maintain order
+                        if len(relevant_before) >= 3:  # Limit to 3 paragraphs max
+                            break
+            
+            # Now capture content after "Comentario de la editorial:"
+            start_pos = comentario_match.end()
+            # Find the end: look for common delimiters
+            end_markers = [
+                (r'<div[^>]*class="[^"]*tebeoafines', 'tebeoafines div'),
+                (r'TEBEOAFINES', 'TEBEOAFINES text'),
+                (r'<div[^>]*class="[^"]*(?:row|tab|datos)', 'row/tab div'),
+                (r'<h[234]', 'heading tag'),
+                (r'</body>', 'body end'),
+            ]
+            
+            # Find the earliest end marker
+            end_pos = len(html_content)
+            found_marker = None
+            for marker_pattern, marker_name in end_markers:
+                end_match = re.search(marker_pattern, html_content[start_pos:], re.IGNORECASE)
+                if end_match:
+                    candidate_end = start_pos + end_match.start()
+                    if candidate_end < end_pos:
+                        end_pos = candidate_end
+                        found_marker = marker_name
+            
+            # Extract the content after comentario
+            if end_pos > start_pos:
+                content = html_content[start_pos:end_pos]
+                synopsis_after = self._strip_tags(content)
+                cleaned_after = self._clean_text(synopsis_after)
+                
+                # Combine: technical info + "Comentario de la editorial:" + synopsis
+                all_parts = relevant_before + [cleaned_after] if cleaned_after else relevant_before
+                combined = '\n\n'.join(all_parts)
+                
+                self._log(f"[SYNOPSIS] Pattern 0 extracted {len(combined)} chars ({len(relevant_before)} before + {len(cleaned_after)} after, stopped at: {found_marker or 'end'})")
+                # Only use if it's substantial text (> 100 chars)
+                if combined and len(combined) > 100:
+                    self._log(f"[SYNOPSIS] Pattern 0 ACCEPTED: {len(combined)} chars")
+                    metadata['synopsis'] = combined
+                else:
+                    self._log(f"[SYNOPSIS] Pattern 0 REJECTED: too short ({len(combined) if combined else 0} chars)")
+            else:
+                self._log("[SYNOPSIS] Pattern 0: no content found after 'Comentario de la editorial:'")
+        else:
+            self._log("[SYNOPSIS] Pattern 0: 'Comentario de la editorial:' not found")
+        
         # Pattern 1: "Información de la editorial:" section - capture ALL content including promo
         # This is the most complete source, capturing everything from the description to the end
-        info_edit_match = re.search(
-            r'Información\s+de\s+la\s+editorial:\s*</p>(.*?)(?:<div[^>]*class="[^"]*tebeoafines|<h[234]|$)',
-            html_content, re.DOTALL | re.IGNORECASE
-        )
-        if info_edit_match:
-            synopsis = self._strip_tags(info_edit_match.group(1))
-            cleaned = self._clean_text(synopsis)
-            # Only use if it's substantial text (> 100 chars)
-            if cleaned and len(cleaned) > 100:
-                metadata['synopsis'] = cleaned
+        
+        # Find the start position of "Información de la editorial:" (try multiple formats)
+        if not metadata.get('synopsis'):
+            # Try different formats
+            info_patterns = [
+                (r'Información\s+de\s+la\s+editorial:', 'standard'),
+                (r'<strong>Información\s+de\s+la\s+editorial:</strong>', 'strong tag'),
+                (r'<h[234][^>]*>Información\s+de\s+la\s+editorial:', 'heading'),
+            ]
+            info_start = None
+            pattern_used = None
+            for pattern, pattern_name in info_patterns:
+                match = re.search(pattern, html_content, re.IGNORECASE)
+                if match:
+                    info_start = match
+                    pattern_used = pattern_name
+                    break
+            
+            if info_start:
+                start_pos = info_start.end()
+                self._log(f"[SYNOPSIS] Found 'Información de la editorial:' at position {start_pos}")
+                
+                # Find the end: look for common delimiters
+                end_markers = [
+                    (r'<div[^>]*class="[^"]*tebeoafines', 'tebeoafines div'),
+                    (r'TEBEOAFINES', 'TEBEOAFINES text'),
+                    (r'Muestras', 'Muestras'),
+                    (r'<h[234]', 'heading tag'),
+                    (r'</body>', 'body end'),
+                ]
+                
+                # Find the earliest end marker
+                end_pos = len(html_content)
+                found_marker = None
+                for marker_pattern, marker_name in end_markers:
+                    end_match = re.search(marker_pattern, html_content[start_pos:], re.IGNORECASE)
+                    if end_match:
+                        candidate_end = start_pos + end_match.start()
+                        if candidate_end < end_pos:
+                            end_pos = candidate_end
+                            found_marker = marker_name
+                
+                # Extract the content
+                if end_pos > start_pos:
+                    content = html_content[start_pos:end_pos]
+                    synopsis = self._strip_tags(content)
+                    cleaned = self._clean_text(synopsis)
+                    self._log(f"[SYNOPSIS] Pattern 1 extracted {len(cleaned)} chars (stopped at: {found_marker or 'end'})")
+                    # Only use if it's substantial text (> 100 chars)
+                    if cleaned and len(cleaned) > 100:
+                        self._log(f"[SYNOPSIS] Pattern 1 ACCEPTED: {len(cleaned)} chars")
+                        metadata['synopsis'] = cleaned
+                    else:
+                        self._log(f"[SYNOPSIS] Pattern 1 REJECTED: too short ({len(cleaned)} chars)")
+            else:
+                self._log("[SYNOPSIS] Pattern 1: 'Información de la editorial:' not found")
+        
+        # Pattern 1.5: Look for long paragraphs that combine technical info + synopsis
+        # These often start with book details but contain the actual synopsis
+        if not metadata.get('synopsis'):
+            self._log("[SYNOPSIS] Trying Pattern 1.5: combined technical + narrative paragraph")
+            paragraphs = re.findall(
+                r'<p[^>]*>(.*?)</p>',
+                html_content, re.DOTALL | re.IGNORECASE
+            )
+            
+            for para in paragraphs:
+                text = self._clean_text(self._strip_tags(para))
+                if text and len(text) > 200:  # Must be long (likely combined)
+                    text_lower = text.lower()
+                    
+                    # Check if it has technical info at the start
+                    has_tech_start = any(tech in text_lower[:200] for tech in ['libro', 'encuadernado', 'páginas', 'traducción', 'original'])
+                    
+                    # Check if it has narrative content (quotes, narrative keywords)
+                    has_quotes = '"' in text or '&ldquo;' in text or '&rdquo;' in text
+                    narrative_keywords = ['muerte', 'vida', 'dios', 'personaje', 'descubrir', 'mundo', 'enfermedad', 'herencia', 'monasterio']
+                    has_narrative = any(keyword in text_lower for keyword in narrative_keywords) or has_quotes
+                    
+                    if has_tech_start and has_narrative:
+                        # This is likely a combined paragraph - use it!
+                        self._log(f"[SYNOPSIS] Pattern 1.5 matched: {len(text)} chars (technical start + narrative content)")
+                        metadata['synopsis'] = text
+                        break
+            
+            if not metadata.get('synopsis'):
+                self._log("[SYNOPSIS] Pattern 1.5: no combined paragraph found")
         
         # Pattern 2: "Promoción editorial:" - capture until next section or end
         if not metadata.get('synopsis'):
-            promo_match = re.search(
-                r'<strong>Promoción editorial:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos))',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            if promo_match:
-                synopsis = self._strip_tags(promo_match.group(1))
-                metadata['synopsis'] = self._clean_text(synopsis)
+            self._log("[SYNOPSIS] Trying Pattern 2: 'Promoción editorial:'")
+            promo_patterns = [
+                (r'<strong>Promoción editorial:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos|tebeoafines)|Muestras|$)', 'strong tag'),
+                (r'Promoción\s+editorial:\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos)|$)', 'text only'),
+            ]
+            for pattern, pattern_name in promo_patterns:
+                promo_match = re.search(pattern, html_content, re.DOTALL | re.IGNORECASE)
+                if promo_match:
+                    synopsis = self._strip_tags(promo_match.group(1))
+                    cleaned = self._clean_text(synopsis)
+                    self._log(f"[SYNOPSIS] Pattern 2 ({pattern_name}) found {len(cleaned)} chars")
+                    if cleaned and len(cleaned) > 50:
+                        self._log(f"[SYNOPSIS] Pattern 2 ACCEPTED: {len(cleaned)} chars")
+                        metadata['synopsis'] = cleaned
+                        break
+                    else:
+                        self._log(f"[SYNOPSIS] Pattern 2 REJECTED: too short ({len(cleaned)} chars)")
+            if not metadata.get('synopsis'):
+                self._log("[SYNOPSIS] Pattern 2: no match found")
         
         # Pattern 3: "Argumento:" label - capture until next section
         if not metadata.get('synopsis'):
+            self._log("[SYNOPSIS] Trying Pattern 3: 'Argumento:'")
             arg_match = re.search(
                 r'<strong>Argumento:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos))',
                 html_content, re.DOTALL | re.IGNORECASE
             )
             if arg_match:
                 synopsis = self._strip_tags(arg_match.group(1))
-                metadata['synopsis'] = self._clean_text(synopsis)
+                cleaned = self._clean_text(synopsis)
+                if cleaned and len(cleaned) > 50:
+                    self._log(f"[SYNOPSIS] Pattern 3 matched: {len(cleaned)} chars")
+                    metadata['synopsis'] = cleaned
+                else:
+                    self._log(f"[SYNOPSIS] Pattern 3 REJECTED: too short ({len(cleaned) if cleaned else 0} chars)")
+            else:
+                self._log("[SYNOPSIS] Pattern 3: 'Argumento:' not found")
         
-        # Pattern 4: Text in <p class="texto"> (main description)
+        # Pattern 4: Text in <p class="texto"> (main description) - capture ALL paragraphs
         if not metadata.get('synopsis'):
-            desc_match = re.search(
-                r'<p class="texto"[^>]*>(.*?)</p>',
+            self._log("[SYNOPSIS] Trying Pattern 4: <p class='texto'>")
+            # First, find the container that holds the description paragraphs
+            # Look for a div or section that contains multiple <p class="texto"> tags
+            texto_container = re.search(
+                r'(<div[^>]*>.*?<p class="texto"[^>]*>.*?</p>(?:.*?<p[^>]*>.*?</p>)*)',
                 html_content, re.DOTALL | re.IGNORECASE
             )
-            if desc_match:
-                description = self._strip_tags(desc_match.group(1))
-                cleaned_desc = self._clean_text(description)
-                if cleaned_desc and len(cleaned_desc) > 20:  # At least 20 chars
-                    metadata['synopsis'] = cleaned_desc
+            if texto_container:
+                # Extract all paragraphs from this container
+                paragraphs = re.findall(
+                    r'<p[^>]*>(.*?)</p>',
+                    texto_container.group(1), re.DOTALL | re.IGNORECASE
+                )
+                all_text = []
+                for para in paragraphs:
+                    text = self._clean_text(self._strip_tags(para))
+                    if text and len(text) > 10:  # Skip very short paragraphs
+                        all_text.append(text)
+                
+                if all_text:
+                    combined = ' '.join(all_text)
+                    if len(combined) > 50:
+                        self._log(f"[SYNOPSIS] Pattern 4 matched: {len(combined)} chars from {len(all_text)} paragraphs")
+                        metadata['synopsis'] = combined
+                    else:
+                        self._log(f"[SYNOPSIS] Pattern 4 REJECTED: too short ({len(combined)} chars)")
+                else:
+                    self._log("[SYNOPSIS] Pattern 4: no substantial paragraphs found")
+            else:
+                # Fallback: single <p class="texto">
+                desc_match = re.search(
+                    r'<p class="texto"[^>]*>(.*?)</p>',
+                    html_content, re.DOTALL | re.IGNORECASE
+                )
+                if desc_match:
+                    description = self._strip_tags(desc_match.group(1))
+                    cleaned_desc = self._clean_text(description)
+                    if cleaned_desc and len(cleaned_desc) > 20:
+                        self._log(f"[SYNOPSIS] Pattern 4 (single) matched: {len(cleaned_desc)} chars")
+                        metadata['synopsis'] = cleaned_desc
+                    else:
+                        self._log(f"[SYNOPSIS] Pattern 4 (single) REJECTED: too short ({len(cleaned_desc) if cleaned_desc else 0} chars)")
+                else:
+                    self._log("[SYNOPSIS] Pattern 4: <p class='texto'> not found")
         
-        # Pattern 5: Any paragraph after tab content (fallback)
+        # Pattern 5: Look for description section - capture everything between title and next major section
         if not metadata.get('synopsis'):
-            # Look for substantial text paragraphs
+            self._log("[SYNOPSIS] Trying Pattern 5: description section")
+            # Look for a section that contains substantial descriptive text
+            # Common patterns: after "Información" or before "Datos técnicos"
+            desc_section = re.search(
+                r'(?:Información|Descripción|Argumento)[^<]*:.*?<p[^>]*>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:datos|tab|row|tebeoafines)|</body>)',
+                html_content, re.DOTALL | re.IGNORECASE
+            )
+            if desc_section:
+                # Extract all paragraphs from this section
+                section_content = desc_section.group(1)
+                paragraphs = re.findall(
+                    r'<p[^>]*>(.*?)</p>',
+                    section_content, re.DOTALL | re.IGNORECASE
+                )
+                all_text = []
+                for para in paragraphs:
+                    text = self._clean_text(self._strip_tags(para))
+                    # Skip metadata-like content
+                    if text and len(text) > 20 and not any(skip in text.lower() for skip in ['isbn', 'depósito', 'precio', 'páginas', 'formato', 'tamaño']):
+                        all_text.append(text)
+                
+                if all_text:
+                    combined = ' '.join(all_text)
+                    if len(combined) > 50:
+                        self._log(f"[SYNOPSIS] Pattern 5 matched: {len(combined)} chars from {len(all_text)} paragraphs")
+                        metadata['synopsis'] = combined
+                    else:
+                        self._log(f"[SYNOPSIS] Pattern 5 REJECTED: too short ({len(combined)} chars)")
+                else:
+                    self._log("[SYNOPSIS] Pattern 5: no substantial paragraphs found in section")
+            else:
+                self._log("[SYNOPSIS] Pattern 5: description section not found")
+        
+        # Pattern 6: Fallback - find the LONGEST substantial paragraph (not just the first)
+        if not metadata.get('synopsis'):
+            self._log("[SYNOPSIS] Trying Pattern 6: fallback - longest substantial paragraph")
             paragraphs = re.findall(
                 r'<p[^>]*>(.*?)</p>',
                 html_content, re.DOTALL | re.IGNORECASE
             )
+            best_para = None
+            best_score = 0
+            # Keywords that indicate technical/metadata content (should be skipped)
+            skip_keywords = [
+                'isbn', 'depósito', 'precio', 'páginas', 'formato', 'tamaño', 'color', 'lengua', 
+                'traducción', 'original', 'papel', 'bosques', 'gestionados', 'sostenible', 'impreso',
+                'encuadernado', 'tapa', 'semirígida', 'cartoné', 'ediciones', 'editorial', 'traducción',
+                'rotulación', 'editor', 'italia', 'spa', 'leg', 'proveniente'
+            ]
+            # Keywords that indicate a good synopsis (narrative content)
+            good_keywords = [
+                'historia', 'colección', 'descubrir', 'personajes', 'aventura', 'argumento', 'sinopsis', 
+                'narra', 'cuenta', 'viaje', 'embarcan', 'misterioso', 'personaje', 'recorrido', 'gesta',
+                'iniciático', 'místico', 'pintados', 'colores', 'inspirad', 'ruedan', 'carreteras',
+                'autoestopista', 'veterano', 'silla', 'ruedas', 'mago', 'piernas', 'accidente', 'helicóptero',
+                'muerte', 'dios', 'vida', 'soledad', 'silencio', 'monasterio', 'herencia', 'parís', 'mundo',
+                'cuestion', 'reencontr', 'enfermedad', 'incurable', 'confront', 'preguntas', 'elecciones',
+                'cartujana', 'william', 'méry', 'abandonar', 'descubrirá', 'forjadas', 'antigua'
+            ]
+            
             for para in paragraphs:
                 text = self._clean_text(self._strip_tags(para))
                 # Look for substantial paragraphs (> 50 chars, not just metadata)
-                if text and len(text) > 50 and not any(skip in text.lower() for skip in ['isbn', 'depósito', 'precio', 'páginas']):
-                    metadata['synopsis'] = text
-                    break
+                if text and len(text) > 50:
+                    text_lower = text.lower()
+                    
+                    # Count technical keywords (metadata)
+                    skip_count = sum(1 for skip in skip_keywords if skip in text_lower)
+                    
+                    # Count good keywords (narrative content)
+                    good_count = sum(1 for keyword in good_keywords if keyword in text_lower)
+                    
+                    # Check for quotes (citations) - often indicate synopsis
+                    has_quotes = '"' in text or '&ldquo;' in text or '&rdquo;' in text or "'" in text
+                    if has_quotes:
+                        good_count += 2  # Quotes are a strong indicator of synopsis
+                    
+                    # IMPORTANT: If paragraph has BOTH technical AND narrative keywords,
+                    # it's likely a combined paragraph (technical info + synopsis) - DON'T skip it!
+                    # Only skip if it has technical keywords BUT NO narrative keywords AND no quotes
+                    if skip_count >= 2 and good_count == 0 and not has_quotes:
+                        # Pure technical/metadata paragraph - skip it
+                        self._log(f"[SYNOPSIS] Pattern 6: skipping pure technical paragraph ({skip_count} tech, 0 narrative, no quotes): {text[:80]}...")
+                        continue
+                    
+                    # Score: length + strong bonus for narrative keywords and quotes
+                    # If it has narrative keywords or quotes, it's valuable even if it has some technical info
+                    score = len(text)
+                    if good_count > 0 or has_quotes:
+                        score += 500 * good_count  # Very strong bonus for narrative keywords
+                        if has_quotes:
+                            score += 300  # Bonus for quotes
+                        # If it has narrative content, reduce penalty for technical keywords
+                        if skip_count > 0:
+                            score -= 50 * skip_count  # Small penalty (it's a combined paragraph)
+                    else:
+                        # No narrative keywords or quotes - apply full penalty for technical keywords
+                        if skip_count > 0:
+                            score -= 150 * skip_count  # Stronger penalty
+                    
+                    self._log(f"[SYNOPSIS] Pattern 6 candidate: {len(text)} chars, {good_count} narrative keywords, {skip_count} tech keywords, score: {score}")
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_para = text
+            
+            if best_para:
+                self._log(f"[SYNOPSIS] Pattern 6 matched: {len(best_para)} chars (best score: {best_score} of {len(paragraphs)} paragraphs)")
+                metadata['synopsis'] = best_para
+            else:
+                self._log("[SYNOPSIS] Pattern 6: no suitable paragraph found")
 
         # Extract cover image (the first/main one)
         cover_match = re.search(
@@ -265,11 +595,10 @@ class TebeoSferaParser(object):
                 metadata['volume_year'] = int(series_year_match.group(1))
 
         # Log synopsis extraction for debugging
-        from utils_compat import log
         if metadata.get('synopsis'):
-            log.debug(f"[OK] Synopsis extracted ({len(metadata['synopsis'])} chars): {metadata['synopsis'][:100]}...")
+            self._log(f"[OK] Synopsis extracted ({len(metadata['synopsis'])} chars): {metadata['synopsis'][:100]}...")
         else:
-            log.debug("[WARN] No synopsis found in page")
+            self._log("[WARN] No synopsis found in page")
 
         return metadata
 
