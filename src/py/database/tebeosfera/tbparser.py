@@ -739,42 +739,90 @@ class TebeoSferaParser(object):
         # Fallback: if no sections found, use old method
         if not results:
             log.debug("No sections found, falling back to linea_resultados parsing")
-            lineas = []
-            pos = 0
-            while True:
-                start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
-                if not start_match:
-                    break
-                
-                start_pos = pos + start_match.end()
-                depth = 1
-                search_pos = start_pos
-                end_pos = None
-                
-                while depth > 0 and search_pos < len(html_content):
-                    next_tag = re.search(r'</?div[^>]*>', html_content[search_pos:], re.IGNORECASE)
-                    if not next_tag:
+            
+            # First, try to find results by scanning for collection/saga/issue links directly
+            # This is more robust than relying on specific HTML structure
+            direct_results = []
+            
+            # Find all collection links
+            collection_pattern = r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
+            for match in re.finditer(collection_pattern, html_content, re.IGNORECASE):
+                url = match.group(1)
+                slug = match.group(2)
+                link_html = match.group(3)
+                title = self._clean_text(self._strip_tags(link_html))
+                if title and 'img' not in link_html.lower():  # Skip image links
+                    direct_results.append({
+                        'slug': slug,
+                        'title': title,
+                        'url': url,
+                        'series_name': title,
+                        'type': 'collection',
+                        'thumb_url': None
+                    })
+            log.debug("Direct scan found {0} collection links".format(len(direct_results)))
+            
+            # Find all saga links
+            saga_pattern = r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
+            saga_count_before = len(direct_results)
+            for match in re.finditer(saga_pattern, html_content, re.IGNORECASE):
+                url = match.group(1)
+                slug = match.group(2)
+                link_html = match.group(3)
+                title = self._clean_text(self._strip_tags(link_html))
+                if title and 'img' not in link_html.lower():  # Skip image links
+                    direct_results.append({
+                        'slug': slug,
+                        'title': title,
+                        'url': url,
+                        'series_name': title,
+                        'type': 'saga',
+                        'thumb_url': None
+                    })
+            log.debug("Direct scan found {0} saga links".format(len(direct_results) - saga_count_before))
+            
+            if direct_results:
+                log.debug("Using {0} results from direct link scan".format(len(direct_results)))
+                results.extend(direct_results)
+            
+            # If we still have no results, try the original linea_resultados method
+            if not results:
+                lineas = []
+                pos = 0
+                while True:
+                    start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
+                    if not start_match:
                         break
                     
-                    tag_pos = search_pos + next_tag.start()
-                    tag = next_tag.group(0).lower()
+                    start_pos = pos + start_match.end()
+                    depth = 1
+                    search_pos = start_pos
+                    end_pos = None
                     
-                    if tag.startswith('</div'):
-                        depth -= 1
-                        if depth == 0:
-                            end_pos = tag_pos
+                    while depth > 0 and search_pos < len(html_content):
+                        next_tag = re.search(r'</?div[^>]*>', html_content[search_pos:], re.IGNORECASE)
+                        if not next_tag:
                             break
-                    elif tag.startswith('<div'):
-                        depth += 1
+                        
+                        tag_pos = search_pos + next_tag.start()
+                        tag = next_tag.group(0).lower()
+                        
+                        if tag.startswith('</div'):
+                            depth -= 1
+                            if depth == 0:
+                                end_pos = tag_pos
+                                break
+                        elif tag.startswith('<div'):
+                            depth += 1
+                        
+                        search_pos = tag_pos + next_tag.end()
                     
-                    search_pos = tag_pos + next_tag.end()
-                
-                if end_pos:
-                    linea_content = html_content[start_pos:end_pos]
-                    lineas.append((start_pos, end_pos, linea_content))
-                    pos = end_pos + 6
-                else:
-                    break
+                    if end_pos:
+                        linea_content = html_content[start_pos:end_pos]
+                        lineas.append((start_pos, end_pos, linea_content))
+                        pos = end_pos + 6
+                    else:
+                        break
             
             if not lineas:
                 linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
