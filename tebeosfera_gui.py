@@ -1198,6 +1198,7 @@ class TebeoSferaGUI(tk.Tk):
             try:
                 shutil.rmtree(temp_dir)
             except:
+                # Ignore errors during cleanup; failure to remove temp_dir is not critical
                 pass
 
     def _process_selected(self):
