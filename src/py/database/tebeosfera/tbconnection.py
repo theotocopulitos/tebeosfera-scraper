@@ -195,12 +195,20 @@ class TebeoSferaConnection(object):
                 except:
                     collections_html = collections_html.decode('latin-1')
             
+            from utils_compat import log
             if collections_html and collections_html.strip() and not collections_html.startswith('Error'):
                 # Add section header for collections
                 collections_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + collections_html
                 all_results_html.append(collections_with_header)
-                from utils_compat import log
                 log.debug("Collections AJAX returned {0} bytes".format(len(collections_html)))
+            else:
+                # Log why collections were filtered out
+                if not collections_html:
+                    log.debug("Collections AJAX returned empty response")
+                elif not collections_html.strip():
+                    log.debug("Collections AJAX returned whitespace-only response ({0} bytes)".format(len(collections_html)))
+                elif collections_html.startswith('Error'):
+                    log.debug("Collections AJAX returned error: {0}".format(collections_html[:200]))
         except Exception as e:
             from utils_compat import log
             log.debug("Error fetching collections via AJAX: {0}".format(sstr(e)))
@@ -236,12 +244,20 @@ class TebeoSferaConnection(object):
                 except:
                     sagas_html = sagas_html.decode('latin-1')
             
+            from utils_compat import log
             if sagas_html and sagas_html.strip() and not sagas_html.startswith('Error'):
                 # Add section header for sagas
                 sagas_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Sagas</div>\n' + sagas_html
                 all_results_html.append(sagas_with_header)
-                from utils_compat import log
                 log.debug("Sagas AJAX returned {0} bytes".format(len(sagas_html)))
+            else:
+                # Log why sagas were filtered out
+                if not sagas_html:
+                    log.debug("Sagas AJAX returned empty response")
+                elif not sagas_html.strip():
+                    log.debug("Sagas AJAX returned whitespace-only response ({0} bytes)".format(len(sagas_html)))
+                elif sagas_html.startswith('Error'):
+                    log.debug("Sagas AJAX returned error: {0}".format(sagas_html[:200]))
         except Exception as e:
             from utils_compat import log
             log.debug("Error fetching sagas via AJAX: {0}".format(sstr(e)))
