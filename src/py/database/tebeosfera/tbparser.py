@@ -803,49 +803,62 @@ class TebeoSferaParser(object):
                 
                 # Extract link and slug - can be issue, collection, or saga
                 # Search for ALL types and prioritize collections/sagas over issues
-                # (since a result might have multiple links, we want the main one)
-                link_match = None
+                # For each type, we need to find the link that contains text (not just an image)
                 result_type = None
                 url = None
                 slug = None
+                title = None
                 
                 # Try saga link first (highest priority)
-                saga_match = re.search(r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-                if saga_match:
-                    link_match = saga_match
-                    result_type = 'saga'
-                    url = saga_match.group(1)
-                    slug = saga_match.group(2)
+                saga_matches = list(re.finditer(r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE))
+                for saga_match in saga_matches:
+                    link_start = saga_match.end()
+                    link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+                    if link_end_match:
+                        link_text = linea_content[link_start:link_start+link_end_match.start()]
+                        text_content = self._clean_text(self._strip_tags(link_text))
+                        if text_content:  # Found a link with actual text
+                            result_type = 'saga'
+                            url = saga_match.group(1)
+                            slug = saga_match.group(2)
+                            title = text_content
+                            break
                 
                 # Try collection link (second priority)
-                if not link_match:
-                    collection_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-                    if collection_match:
-                        link_match = collection_match
-                        result_type = 'collection'
-                        url = collection_match.group(1)
-                        slug = collection_match.group(2)
+                if not title:
+                    collection_matches = list(re.finditer(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE))
+                    for collection_match in collection_matches:
+                        link_start = collection_match.end()
+                        link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+                        if link_end_match:
+                            link_text = linea_content[link_start:link_start+link_end_match.start()]
+                            text_content = self._clean_text(self._strip_tags(link_text))
+                            if text_content:  # Found a link with actual text
+                                result_type = 'collection'
+                                url = collection_match.group(1)
+                                slug = collection_match.group(2)
+                                title = text_content
+                                break
                 
                 # Try issue link last (lowest priority)
-                if not link_match:
-                    issue_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-                    if issue_match:
-                        link_match = issue_match
-                        result_type = 'issue'
-                        url = issue_match.group(1)
-                        slug = issue_match.group(2)
+                if not title:
+                    issue_matches = list(re.finditer(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE))
+                    for issue_match in issue_matches:
+                        link_start = issue_match.end()
+                        link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+                        if link_end_match:
+                            link_text = linea_content[link_start:link_start+link_end_match.start()]
+                            text_content = self._clean_text(self._strip_tags(link_text))
+                            if text_content:  # Found a link with actual text
+                                result_type = 'issue'
+                                url = issue_match.group(1)
+                                slug = issue_match.group(2)
+                                title = text_content
+                                break
                 
-                if not link_match:
-                    # No recognized link type found
+                if not title or not url or not slug:
+                    # No recognized link with text found
                     continue
-                
-                # Extract link text (everything between <a> and </a>, handling nested tags)
-                link_start = link_match.end()
-                link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
-                if not link_end_match:
-                    continue
-                link_text = linea_content[link_start:link_start+link_end_match.start()]
-                title = self._clean_text(self._strip_tags(link_text))
                 
                 # For collections and sagas, they are series/groups, not individual issues
                 if result_type in ['collection', 'saga']:
@@ -1002,38 +1015,50 @@ class TebeoSferaParser(object):
                 full_image_url = 'https://www.tebeosfera.com' + full_image_url
             
             # Find the main link - use the section type to determine which link to look for
-            link_match = None
+            # There may be multiple links with the same href (one for image, one for text)
+            # We need the one that contains actual text content
+            link_pattern = None
             url = None
             slug = None
+            title = None
             
             if section_type == 'saga':
-                link_match = re.search(r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                link_pattern = r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>'
             elif section_type == 'collection':
-                link_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                link_pattern = r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>'
             else:  # issue
-                link_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                link_pattern = r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>'
             
-            if not link_match:
-                # Try any link as fallback
-                any_link = re.search(r'<a[^>]*href="(/(?:numeros|colecciones|sagas)/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+            # Find ALL matching links and choose the one with text content
+            if link_pattern:
+                all_matches = list(re.finditer(link_pattern, linea_content, re.IGNORECASE))
+                for link_match in all_matches:
+                    url = link_match.group(1)
+                    slug = link_match.group(2)
+                    
+                    # Extract link text
+                    link_start = link_match.end()
+                    link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+                    if not link_end_match:
+                        continue
+                    link_text = linea_content[link_start:link_start+link_end_match.start()]
+                    
+                    # Check if this link contains actual text (not just an image)
+                    text_content = self._clean_text(self._strip_tags(link_text))
+                    if text_content:  # Found a link with actual text
+                        title = text_content
+                        break
+            
+            # Fallback: try any link type if pattern didn't match
+            if not title:
+                any_link = re.search(r'<a[^>]*href="(/(?:numeros|colecciones|sagas)/([^"]+)\.html)"[^>]*>([^<]*)</a>', linea_content, re.IGNORECASE)
                 if any_link:
-                    link_match = any_link
                     url = any_link.group(1)
                     slug = any_link.group(2)
-            else:
-                url = link_match.group(1)
-                slug = link_match.group(2)
+                    title = self._clean_text(any_link.group(3))
             
-            if not link_match:
+            if not url or not slug:
                 continue
-            
-            # Extract link text
-            link_start = link_match.end()
-            link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
-            if not link_end_match:
-                continue
-            link_text = linea_content[link_start:link_start+link_end_match.start()]
-            title = self._clean_text(self._strip_tags(link_text))
             
             # For collections and sagas, title IS the series name
             if section_type in ['collection', 'saga']:
