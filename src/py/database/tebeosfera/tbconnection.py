@@ -151,122 +151,23 @@ class TebeoSferaConnection(object):
         # Build search URL (initial page)
         search_url = "/buscador/{0}/".format(query_encoded)
         
-        # Get initial page to understand structure
+        # Get initial page which may contain collections and sagas directly
         initial_html = self.get_page(search_url)
         if not initial_html:
             return None
         
-        # The page uses AJAX to load results. We need to make the AJAX calls directly.
-        # Based on the JavaScript code, we need to call:
-        # 1. /neko/templates/ajax/buscador_txt_post.php for collections, authors, etc.
-        # 2. /neko/php/ajax/megaAjax.php for numbers (action: "buscador_simple_numeros")
+        from utils_compat import log
+        log.debug("Initial page returned {0} bytes".format(len(initial_html)))
         
-        # Collect all results from AJAX endpoints
+        # The page may have collections and sagas embedded directly in the initial HTML,
+        # while numbers are loaded via AJAX. Let's use the initial HTML as a starting point.
+        # Collect all results
         all_results_html = []
         
-        # Search in collections first
-        try:
-            # Try using the megaAjax endpoint similar to numbers
-            collections_data = urllib.parse.urlencode({
-                'action': 'buscador_simple_colecciones',
-                'busqueda': original_query,
-                'reg_ini': '0',
-                'rpp': '100'
-            }).encode('utf-8')
-            
-            collections_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
-            request = urllib.request.Request(collections_url, data=collections_data, method='POST')
-            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
-            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
-            
-            self._enforce_rate_limit()
-            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
-            collections_html = response.read()
-            
-            # Check if response is gzipped
-            if collections_html.startswith(b'\x1f\x8b'):  # gzip magic number
-                collections_html = gzip.decompress(collections_html)
-            
-            # Decode response
-            charset = self._get_charset(response)
-            if charset:
-                collections_html = collections_html.decode(charset)
-            else:
-                try:
-                    collections_html = collections_html.decode('utf-8')
-                except:
-                    collections_html = collections_html.decode('latin-1')
-            
-            from utils_compat import log
-            if collections_html and collections_html.strip() and not collections_html.startswith('Error'):
-                # Add section header for collections
-                collections_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + collections_html
-                all_results_html.append(collections_with_header)
-                log.debug("Collections AJAX returned {0} bytes".format(len(collections_html)))
-            else:
-                # Log why collections were filtered out
-                if not collections_html:
-                    log.debug("Collections AJAX returned empty response")
-                elif not collections_html.strip():
-                    log.debug("Collections AJAX returned whitespace-only response ({0} bytes)".format(len(collections_html)))
-                elif collections_html.startswith('Error'):
-                    log.debug("Collections AJAX returned error: {0}".format(collections_html[:200]))
-        except Exception as e:
-            from utils_compat import log
-            log.debug("Error fetching collections via AJAX: {0}".format(sstr(e)))
-        
-        # Search in sagas
-        try:
-            # Try using the megaAjax endpoint similar to numbers
-            sagas_data = urllib.parse.urlencode({
-                'action': 'buscador_simple_sagas',
-                'busqueda': original_query,
-                'reg_ini': '0',
-                'rpp': '100'
-            }).encode('utf-8')
-            
-            sagas_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
-            request = urllib.request.Request(sagas_url, data=sagas_data, method='POST')
-            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
-            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
-            
-            self._enforce_rate_limit()
-            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
-            sagas_html = response.read()
-            
-            # Check if response is gzipped
-            if sagas_html.startswith(b'\x1f\x8b'):  # gzip magic number
-                sagas_html = gzip.decompress(sagas_html)
-            
-            # Decode response
-            charset = self._get_charset(response)
-            if charset:
-                sagas_html = sagas_html.decode(charset)
-            else:
-                try:
-                    sagas_html = sagas_html.decode('utf-8')
-                except:
-                    sagas_html = sagas_html.decode('latin-1')
-            
-            from utils_compat import log
-            if sagas_html and sagas_html.strip() and not sagas_html.startswith('Error'):
-                # Add section header for sagas
-                sagas_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Sagas</div>\n' + sagas_html
-                all_results_html.append(sagas_with_header)
-                log.debug("Sagas AJAX returned {0} bytes".format(len(sagas_html)))
-            else:
-                # Log why sagas were filtered out
-                if not sagas_html:
-                    log.debug("Sagas AJAX returned empty response")
-                elif not sagas_html.strip():
-                    log.debug("Sagas AJAX returned whitespace-only response ({0} bytes)".format(len(sagas_html)))
-                elif sagas_html.startswith('Error'):
-                    log.debug("Sagas AJAX returned error: {0}".format(sagas_html[:200]))
-        except Exception as e:
-            from utils_compat import log
-            log.debug("Error fetching sagas via AJAX: {0}".format(sstr(e)))
+        # Add the initial HTML which may contain collections and sagas
+        # The initial HTML should have the structure we need
+        if initial_html and initial_html.strip():
+            all_results_html.append(initial_html)
         
         # Search in numbers (issues)
         try:
