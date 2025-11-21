@@ -736,9 +736,17 @@ class TebeoSferaParser(object):
             results.extend(section_results)
             log.debug("Found {0} results in section '{1}'".format(len(section_results), section_title))
         
-        # Fallback: if no sections found, use old method
-        if not results:
-            log.debug("No sections found, falling back to linea_resultados parsing")
+        # Fallback: if no results found OR if we're missing collections/sagas, try direct scan
+        # This handles cases where section headers exist but sections are empty/malformed
+        has_collections = any(r.get('type') == 'collection' for r in results)
+        has_sagas = any(r.get('type') == 'saga' for r in results)
+        
+        if not results or not has_collections or not has_sagas:
+            if not results:
+                log.debug("No results found in sections, trying direct link scan")
+            else:
+                log.debug("Missing types (collections: {0}, sagas: {1}), trying direct link scan".format(
+                    has_collections, has_sagas))
             
             # First, try to find results by scanning for collection/saga/issue links directly
             # This is more robust than relying on specific HTML structure
