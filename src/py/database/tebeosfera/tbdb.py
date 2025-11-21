@@ -215,10 +215,19 @@ class TebeoSferaDB(object):
         issue_ref: IssueRef object
         Returns: Issue object with full details, or None on error
         '''
-        log.debug("Querying issue details for: ", issue_ref.issue_key)
+        issue_key = getattr(issue_ref, 'issue_key', None)
+        if not issue_key:
+            # Fallback: try series_key (for SeriesRef objects representing issues)
+            issue_key = getattr(issue_ref, 'series_key', None)
+        
+        log.debug("Querying issue details for: ", issue_key or "unknown")
 
         # Fetch the issue page
-        html_content = self.connection.get_issue_page(issue_ref.issue_key)
+        if not issue_key:
+            log.debug("No issue key available")
+            return None
+        
+        html_content = self.connection.get_issue_page(issue_key)
         if not html_content:
             log.debug("Could not fetch issue page")
             return None
@@ -230,7 +239,7 @@ class TebeoSferaDB(object):
             return None
 
         # Add page URL to metadata (constructed from issue_key)
-        metadata['page_url'] = build_issue_url(issue_ref.issue_key)
+        metadata['page_url'] = build_issue_url(issue_key)
 
         # Create Issue object from parsed metadata
         issue = self._create_issue_from_metadata(issue_ref, metadata)

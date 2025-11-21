@@ -1414,7 +1414,7 @@ class SearchDialog(tk.Toplevel):
         tk.Toplevel.__init__(self, parent)
 
         self.title("Buscar en TebeoSfera - {0}".format(comic.filename))
-        self.geometry("1000x700")
+        self.geometry("1400x750")
         self.transient(parent)
 
         self.parent = parent  # Store parent reference for logging
@@ -1449,42 +1449,54 @@ class SearchDialog(tk.Toplevel):
         self.search_entry.bind('<Return>', lambda e: self._search())
 
         tk.Button(search_frame, text="🔍 Buscar", command=self._search).pack(side=tk.LEFT)
-        self.back_button = tk.Button(search_frame, text="← Volver a series", command=self._back_to_series, state=tk.DISABLED)
-        self.back_button.pack(side=tk.LEFT, padx=10)
 
         # Main panel - split between results and preview
         main_paned = tk.PanedWindow(self, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
         main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Left: Results list
+        # Left: Results tree
         left_frame = tk.Frame(main_paned)
         main_paned.add(left_frame, minsize=400)
 
-        self.results_label = tk.Label(left_frame, text="Series encontradas:", font=('Arial', 10, 'bold'))
+        self.results_label = tk.Label(left_frame, text="Resultados:", font=('Arial', 10, 'bold'))
         self.results_label.pack(anchor=tk.W)
 
-        # Listbox for results
-        list_frame = tk.Frame(left_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
+        # Treeview for results (sagas/colecciones/issues)
+        tree_frame = tk.Frame(left_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar = tk.Scrollbar(tree_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.results_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set)
-        self.results_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.results_listbox.bind('<<ListboxSelect>>', self._on_result_select)
-        self.results_listbox.bind('<Double-Button-1>', self._on_double_click)
+        self.results_tree = ttk.Treeview(tree_frame, yscrollcommand=scrollbar.set, show='tree')
+        self.results_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.results_tree.bind('<<TreeviewSelect>>', self._on_tree_select)
+        self.results_tree.bind('<Double-Button-1>', self._on_tree_double_click)
+        # Bind expansion event to load issues
+        self.results_tree.bind('<<TreeviewOpen>>', self._on_tree_expand)
 
-        scrollbar.config(command=self.results_listbox.yview)
+        scrollbar.config(command=self.results_tree.yview)
+        
+        # Store tree item data: {item_id: (type, object)}
+        # type can be: 'issue', 'collection', 'saga', 'issue_item'
+        self.tree_item_data = {}
 
-        # Right: Preview panel
+        # Right: Preview panel (split: cover left, metadata right)
         right_frame = tk.Frame(main_paned)
-        main_paned.add(right_frame, minsize=300)
-
-        tk.Label(right_frame, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
-
-        # Canvas para la imagen - se ajusta al área disponible
-        preview_container = tk.Frame(right_frame, bg='gray80', relief=tk.SUNKEN, bd=2)
+        main_paned.add(right_frame, minsize=500)
+        
+        # Split preview area horizontally
+        preview_paned = tk.PanedWindow(right_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        preview_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Left: Cover preview
+        cover_frame = tk.Frame(preview_paned)
+        preview_paned.add(cover_frame, minsize=200)
+        
+        tk.Label(cover_frame, text="Portada:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
+        
+        # Canvas para la imagen
+        preview_container = tk.Frame(cover_frame, bg='gray80', relief=tk.SUNKEN, bd=2)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         self.preview_canvas = tk.Canvas(preview_container, bg='gray90', highlightthickness=0)
@@ -1493,33 +1505,67 @@ class SearchDialog(tk.Toplevel):
         # Placeholder text
         self.preview_canvas.create_text(
             200, 300,
-            text="Selecciona un resultado\npara ver su portada",
+            text="Selecciona un issue\npara ver su portada",
             font=('Arial', 12), fill='gray40', tags='placeholder'
         )
         
         # Keep a reference for the label (needed for image persistence)
         self.preview_label = tk.Label(self.preview_canvas)  # Dummy label for image reference
-
-        preview_actions = tk.Frame(right_frame)
+        
+        # Preview actions (browser buttons)
+        preview_actions = tk.Frame(cover_frame)
         preview_actions.pack(fill=tk.X, padx=5, pady=(0, 5))
 
-        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir serie", command=self._open_selected_series, state=tk.DISABLED)
+        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir en navegador", command=self._open_selected_series, state=tk.DISABLED)
         self.open_series_button.pack(side=tk.LEFT, padx=2)
-
-        self.open_issue_button = tk.Button(preview_actions, text="🌐 Abrir issue", command=self._open_selected_issue, state=tk.DISABLED)
-        self.open_issue_button.pack(side=tk.LEFT, padx=2)
-
-        # Info text
-        self.info_text = tk.Text(right_frame, height=8, wrap=tk.WORD)
-        self.info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Right: Metadata display
+        metadata_frame = tk.Frame(preview_paned)
+        preview_paned.add(metadata_frame, minsize=400)
+        
+        tk.Label(metadata_frame, text="Metadatos:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
+        
+        # Toggle buttons for metadata view
+        metadata_toggle = tk.Frame(metadata_frame)
+        metadata_toggle.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.metadata_view_mode = tk.StringVar(value='pretty')
+        tk.Radiobutton(metadata_toggle, text="Bonito", variable=self.metadata_view_mode, 
+                      value='pretty', command=self._toggle_metadata_view).pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(metadata_toggle, text="XML", variable=self.metadata_view_mode, 
+                      value='xml', command=self._toggle_metadata_view).pack(side=tk.LEFT, padx=5)
+        
+        # Metadata display with scrollbar
+        metadata_text_frame = tk.Frame(metadata_frame)
+        metadata_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        metadata_scrollbar = tk.Scrollbar(metadata_text_frame)
+        metadata_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, 
+                                        yscrollcommand=metadata_scrollbar.set,
+                                        font=('Consolas', 9))
+        self.metadata_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        metadata_scrollbar.config(command=self.metadata_display.yview)
+        
+        # Store current metadata for toggling
+        self.current_metadata_xml = None
+        self.current_metadata_dict = None
+        
+        # Apply button
+        apply_button_frame = tk.Frame(metadata_frame)
+        apply_button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.apply_xml_button = tk.Button(apply_button_frame, text="💾 Aplicar ComicInfo.xml", 
+                                          command=self._apply_comicinfo_xml, state=tk.DISABLED,
+                                          height=2, font=('Arial', 10, 'bold'))
+        self.apply_xml_button.pack(fill=tk.X, padx=5, pady=5)
 
         # Buttons
         button_frame = tk.Frame(self)
         button_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.select_button = tk.Button(button_frame, text="Ver Issues →", command=self._view_issues)
-        self.select_button.pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="✗ Cancelar", command=self.destroy).pack(side=tk.LEFT)
+        tk.Button(button_frame, text="✗ Cerrar", command=self.destroy).pack(side=tk.RIGHT, padx=5)
 
         # Status label
         self.status_label = tk.Label(self, text="", fg='blue')
@@ -1562,22 +1608,43 @@ class SearchDialog(tk.Toplevel):
                 result_type = getattr(self.selected_series, 'type_s', 'collection')
                 if result_type == 'issue':
                     self.open_series_button.config(text="🌐 Abrir ejemplar")
+                elif result_type == 'saga':
+                    self.open_series_button.config(text="🌐 Abrir saga")
                 else:
-                    self.open_series_button.config(text="🌐 Abrir serie")
+                    self.open_series_button.config(text="🌐 Abrir colección")
+            elif self.selected_issue:
+                self.open_series_button.config(state=tk.NORMAL)
+                self.open_series_button.config(text="🌐 Abrir ejemplar")
             else:
                 self.open_series_button.config(state=tk.DISABLED)
 
-        if hasattr(self, 'open_issue_button'):
-            if self.mode == 'issues' and self.selected_issue:
-                self.open_issue_button.config(state=tk.NORMAL)
-            else:
-                self.open_issue_button.config(state=tk.DISABLED)
-
     def _open_selected_series(self):
         '''Open selected series/issue in browser'''
+        # Check if we have a selected issue first
+        if self.selected_issue:
+            # Try to get issue_key from IssueRef
+            issue_key = getattr(self.selected_issue, 'issue_key', None)
+            # If it's a SeriesRef converted to IssueRef, try series_key
+            if not issue_key:
+                issue_key = getattr(self.selected_issue, 'series_key', None)
+            
+            if issue_key:
+                url = build_issue_url(issue_key)
+                if url:
+                    self._log(f"🌐 Abriendo ejemplar: {url}")
+                    webbrowser.open(url)
+                    return
+                else:
+                    messagebox.showinfo("Información", "No se pudo determinar la URL del ejemplar seleccionado.")
+                    return
+            else:
+                messagebox.showinfo("Información", "No se pudo determinar la clave del ejemplar seleccionado.")
+                return
+        
+        # Otherwise check for selected series
         series_ref = self.selected_series
         if not series_ref:
-            messagebox.showinfo("Información", "Selecciona una serie primero")
+            messagebox.showinfo("Información", "Selecciona una serie, saga o ejemplar primero")
             return
 
         series_key = getattr(series_ref, 'series_key', None)
@@ -1587,15 +1654,18 @@ class SearchDialog(tk.Toplevel):
         if result_type == 'issue':
             url = build_issue_url(series_key)
             tipo = "ejemplar"
+        elif result_type == 'saga':
+            url = build_series_url(series_key)
+            tipo = "saga"
         else:
             url = build_series_url(series_key)
-            tipo = "serie"
+            tipo = "colección"
 
         if url:
             self._log(f"🌐 Abriendo {tipo}: {url}")
             webbrowser.open(url)
         else:
-            messagebox.showinfo("Información", f"No se pudo determinar la URL del {tipo} seleccionado.")
+            messagebox.showinfo("Información", f"No se pudo determinar la URL de la {tipo} seleccionada.")
 
     def _open_selected_issue(self):
         '''Open selected issue in browser'''
@@ -1705,12 +1775,15 @@ class SearchDialog(tk.Toplevel):
         self._update_open_buttons()
 
         self.mode = 'series'
-        self.back_button.config(state=tk.DISABLED)
-        self.results_label.config(text="Series encontradas:")
-        self.select_button.config(text="Ver Issues →", command=self._view_issues)
+        self.results_label.config(text="Resultados:")
 
-        self.results_listbox.delete(0, tk.END)
-        self.results_listbox.insert(tk.END, "Buscando...")
+        # Clear tree
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+        self.tree_item_data = {}
+        
+        # Add loading placeholder
+        loading_item = self.results_tree.insert('', 'end', text="Buscando...", tags=('loading',))
         self.status_label.config(text="Conectando con TebeoSfera...")
         self.update()
         
@@ -1749,7 +1822,11 @@ class SearchDialog(tk.Toplevel):
                 update_status(f"Búsqueda completada: {len(results)} resultados encontrados")
 
                 def update_results(request_info=request_info):
-                    self.results_listbox.delete(0, tk.END)
+                    # Clear tree
+                    for item in self.results_tree.get_children():
+                        self.results_tree.delete(item)
+                    self.tree_item_data = {}
+                    
                     self.search_results = results
 
                     info_line = self._format_request_info(request_info)
@@ -1757,7 +1834,7 @@ class SearchDialog(tk.Toplevel):
                         self._log_request_info("🌐 Solicitud completada:", request_info)
 
                     if not results:
-                        self.results_listbox.insert(tk.END, "Sin resultados")
+                        self.results_tree.insert('', 'end', text="Sin resultados", tags=('empty',))
                         status_msg = "Sin resultados"
                         if info_line:
                             status_msg += f"\n{info_line}"
@@ -1765,19 +1842,48 @@ class SearchDialog(tk.Toplevel):
                         self._log("❌ Sin resultados encontrados")
                         return
 
-                    # Display results with type indicators
-                    for result in results:
-                        # Determine icon based on type
-                        type_attr = getattr(result, 'type_s', 'collection')  # Default to collection if not set
-                        if type_attr == 'issue':
-                            icon = "📖"  # Issue individual
-                        elif type_attr == 'saga':
-                            icon = "🗂️"  # Saga (grupo temático)
-                        else:
-                            icon = "📚"  # Collection/Series (lista de issues)
-                        
-                        display_name = f"{icon} {result.series_name_s}"
-                        self.results_listbox.insert(tk.END, display_name)
+                    # Group results by type and display in tree
+                    # Separate into sagas, collections, and issues
+                    sagas = [r for r in results if getattr(r, 'type_s', 'collection') == 'saga']
+                    collections = [r for r in results if getattr(r, 'type_s', 'collection') == 'collection']
+                    issues = [r for r in results if getattr(r, 'type_s', 'collection') == 'issue']
+                    
+                    # Debug: log types found
+                    self._log(f"📊 Tipos detectados: {len(sagas)} sagas, {len(collections)} colecciones, {len(issues)} issues")
+                    for i, r in enumerate(results[:5]):  # Log first 5
+                        type_attr = getattr(r, 'type_s', 'unknown')
+                        self._log(f"  [{i+1}] type_s='{type_attr}', name='{r.series_name_s[:50]}'")
+                    
+                    # Insert sagas first
+                    if sagas:
+                        sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
+                        self.tree_item_data[sagas_parent] = ('header', None)
+                        for result in sagas:
+                            display_name = result.series_name_s
+                            item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
+                            # Add placeholder child to enable expansion
+                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.tree_item_data[item_id] = ('saga', result)
+                    
+                    # Insert collections
+                    if collections:
+                        collections_parent = self.results_tree.insert('', 'end', text=f"📚 Colecciones ({len(collections)})", tags=('header',))
+                        self.tree_item_data[collections_parent] = ('header', None)
+                        for result in collections:
+                            display_name = result.series_name_s
+                            item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
+                            # Add placeholder child to enable expansion
+                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.tree_item_data[item_id] = ('collection', result)
+                    
+                    # Insert issues
+                    if issues:
+                        issues_parent = self.results_tree.insert('', 'end', text=f"📖 Issues ({len(issues)})", tags=('header',))
+                        self.tree_item_data[issues_parent] = ('header', None)
+                        for result in issues:
+                            display_name = result.series_name_s
+                            item_id = self.results_tree.insert(issues_parent, 'end', text=display_name, tags=('issue',))
+                            self.tree_item_data[item_id] = ('issue', result)
 
                     # Count by type
                     type_counts = {'issue': 0, 'collection': 0, 'saga': 0}
@@ -1853,30 +1959,77 @@ class SearchDialog(tk.Toplevel):
                 )
 
                 def update_ui():
-                    # Update listbox with scores
-                    self.results_listbox.delete(0, tk.END)
-                    for i, result in enumerate(results):
-                        score = self.similarity_scores[i] if i < len(self.similarity_scores) else 0
-                        prefix = "⭐ " if i == self.best_match_index and score > 60 else "   "
-                        display_text = "{0}{1} ({2:.0f}% similar)".format(prefix, result.series_name_s, score)
-                        self.results_listbox.insert(tk.END, display_text)
+                    # Update tree with scores, grouped by type
+                    # Clear and rebuild tree with scores
+                    for item in self.results_tree.get_children():
+                        self.results_tree.delete(item)
+                    self.tree_item_data = {}
+                    
+                    # Group results by type
+                    sagas = [(i, r) for i, r in enumerate(results) if getattr(r, 'type_s', 'collection') == 'saga']
+                    collections = [(i, r) for i, r in enumerate(results) if getattr(r, 'type_s', 'collection') == 'collection']
+                    issues = [(i, r) for i, r in enumerate(results) if getattr(r, 'type_s', 'collection') == 'issue']
+                    
+                    best_item_id = None
+                    best_score = 0
+                    
+                    # Insert sagas first
+                    if sagas:
+                        sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
+                        self.tree_item_data[sagas_parent] = ('header', None)
+                        for i, result in sagas:
+                            score = self.similarity_scores[i] if i < len(self.similarity_scores) else 0
+                            prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
+                            display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
+                            item_id = self.results_tree.insert(sagas_parent, 'end', text=display_text, tags=('saga',))
+                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.tree_item_data[item_id] = ('saga', result)
+                            if i == self.best_match_index and score > 60:
+                                best_item_id = item_id
+                                best_score = score
+                    
+                    # Insert collections
+                    if collections:
+                        collections_parent = self.results_tree.insert('', 'end', text=f"📚 Colecciones ({len(collections)})", tags=('header',))
+                        self.tree_item_data[collections_parent] = ('header', None)
+                        for i, result in collections:
+                            score = self.similarity_scores[i] if i < len(self.similarity_scores) else 0
+                            prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
+                            display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
+                            item_id = self.results_tree.insert(collections_parent, 'end', text=display_text, tags=('collection',))
+                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.tree_item_data[item_id] = ('collection', result)
+                            if i == self.best_match_index and score > 60:
+                                best_item_id = item_id
+                                best_score = score
+                    
+                    # Insert issues
+                    if issues:
+                        issues_parent = self.results_tree.insert('', 'end', text=f"📖 Issues ({len(issues)})", tags=('header',))
+                        self.tree_item_data[issues_parent] = ('header', None)
+                        for i, result in issues:
+                            score = self.similarity_scores[i] if i < len(self.similarity_scores) else 0
+                            prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
+                            display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
+                            item_id = self.results_tree.insert(issues_parent, 'end', text=display_text, tags=('issue',))
+                            self.tree_item_data[item_id] = ('issue', result)
+                            if i == self.best_match_index and score > 60:
+                                best_item_id = item_id
+                                best_score = score
 
                     # Auto-select best match if score is good enough
-                    if self.best_match_index >= 0 and self.similarity_scores[self.best_match_index] > 60:
-                        self.results_listbox.selection_clear(0, tk.END)
-                        self.results_listbox.selection_set(self.best_match_index)
-                        self.results_listbox.see(self.best_match_index)
-                        self.results_listbox.activate(self.best_match_index)
+                    if best_item_id:
+                        self.results_tree.selection_set(best_item_id)
+                        self.results_tree.see(best_item_id)
                         # Trigger selection event
                         self.selected_series = self.search_results[self.best_match_index]
                         self._show_series_preview(self.selected_series)
 
-                        best_score = self.similarity_scores[self.best_match_index]
                         status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
                         self.status_label.config(text=status_msg)
                         self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
                     else:
-                        self.status_label.config(text=f"{len(results)} series encontradas")
+                        self.status_label.config(text=f"{len(results)} resultados encontrados")
                         self._log("ℹ️ Comparación completada")
 
                 self.after(0, update_ui)
@@ -1885,45 +2038,109 @@ class SearchDialog(tk.Toplevel):
         thread.daemon = True
         thread.start()
 
-    def _on_result_select(self, event):
-        '''Handle result selection'''
-        selection = self.results_listbox.curselection()
+    def _on_tree_select(self, event):
+        '''Handle tree item selection'''
+        selection = self.results_tree.selection()
         if not selection:
             return
-
-        index = selection[0]
-
-        if self.mode == 'series' and index < len(self.search_results):
-            self.selected_series = self.search_results[index]
-            self._show_series_preview(self.selected_series)
+        
+        item_id = selection[0]
+        if item_id not in self.tree_item_data:
+            return
+        
+        item_type, item_obj = self.tree_item_data[item_id]
+        
+        # Ignore header items
+        if item_type == 'header':
+            return
+        
+        if item_type == 'issue':
+            # It's an individual issue
+            self.selected_issue = item_obj
+            self.selected_series = None
+            self._show_issue_preview_with_metadata(item_obj)
             self._update_open_buttons()
+        elif item_type in ('collection', 'saga'):
+            # It's a collection/saga - show preview but don't load issues yet
+            self.selected_series = item_obj
+            self.selected_issue = None
+            self._show_series_preview(item_obj)
+            self._update_open_buttons()
+        elif item_type == 'issue_item':
+            # It's an issue within a collection/saga
+            self.selected_issue = item_obj
+            self.selected_series = None
+            self._show_issue_preview_with_metadata(item_obj)
+            self._update_open_buttons()
+
+    def _on_tree_double_click(self, event):
+        '''Handle double-click on tree item'''
+        selection = self.results_tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        if item_id not in self.tree_item_data:
+            return
+        
+        item_type, item_obj = self.tree_item_data[item_id]
+        
+        if item_type == 'issue':
+            # Individual issue - show metadata
+            self._show_issue_preview_with_metadata(item_obj)
+        elif item_type == 'issue_item':
+            # Issue within collection - show metadata
+            self._show_issue_preview_with_metadata(item_obj)
+        # Collections and sagas expand on double-click (handled by tree expansion)
+    
+    def _on_tree_expand(self, event):
+        '''Handle tree item expansion - load issues for collections/sagas'''
+        item_id = self.results_tree.focus()
+        if not item_id or item_id not in self.tree_item_data:
+            return
+        
+        item_type, item_obj = self.tree_item_data[item_id]
+        
+        # Ignore headers
+        if item_type == 'header':
+            return
+        
+        # Only handle collections and sagas
+        if item_type not in ('collection', 'saga'):
+            return
+        
+        # Check if already loaded (has real children, not just placeholder)
+        children = self.results_tree.get_children(item_id)
+        if children and self.tree_item_data.get(children[0], (None, None))[0] != 'loading':
+            return  # Already loaded
+        
+        # Remove placeholder
+        for child in children:
+            if self.tree_item_data.get(child, (None, None))[0] == 'loading':
+                self.results_tree.delete(child)
+                if child in self.tree_item_data:
+                    del self.tree_item_data[child]
+        
+        # Load issues in background
+        def load_issues():
+            issues = self.db.query_series_issues(item_obj)
             
-            # Update button based on type
-            result_type = getattr(self.selected_series, 'type_s', 'collection')
-            if result_type == 'issue':
-                # Es un issue individual, cambiar botón
-                self.select_button.config(text="Ver Ejemplar →", command=self._view_single_issue)
-            else:
-                # Es una colección/saga, mantener botón original
-                self.select_button.config(text="Ver Issues →", command=self._view_issues)
+            def update_tree():
+                # Add issues as children
+                for issue in issues:
+                    display_text = f"#{issue.issue_num_s} - {issue.title_s}"
+                    child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
+                    self.tree_item_data[child_id] = ('issue_item', issue)
                 
-        elif self.mode == 'issues' and index < len(self.issues_list):
-            self.selected_issue = self.issues_list[index]
-            self._show_issue_preview(self.selected_issue)
-            self._update_open_buttons()
-
-    def _on_double_click(self, event):
-        '''Handle double-click on result'''
-        if self.mode == 'series':
-            # Check if it's an individual issue
-            if self.selected_series:
-                result_type = getattr(self.selected_series, 'type_s', 'collection')
-                if result_type == 'issue':
-                    self._view_single_issue()
-                else:
-                    self._view_issues()
-        elif self.mode == 'issues':
-            self._select_issue()
+                if not issues:
+                    no_issues_id = self.results_tree.insert(item_id, 'end', text="Sin issues", tags=('empty',))
+                    self.tree_item_data[no_issues_id] = ('empty', None)
+            
+            self.after(0, update_tree)
+        
+        thread = threading.Thread(target=load_issues)
+        thread.daemon = True
+        thread.start()
 
     def _show_series_preview(self, series_ref):
         '''Show preview of selected series'''
@@ -1935,7 +2152,8 @@ class SearchDialog(tk.Toplevel):
             text='Cargando portada...',
             font=('Arial', 12), fill='gray40'
         )
-        self.info_text.delete('1.0', tk.END)
+        self.metadata_display.config(state=tk.NORMAL)
+        self.metadata_display.delete('1.0', tk.END)
         self.update()
 
         # Show series info - distinguir tipo
@@ -1943,7 +2161,10 @@ class SearchDialog(tk.Toplevel):
         info = f"{series_type}\n"
         info += "Nombre: {0}\n".format(series_ref.series_name_s)
         info += "Clave: {0}\n".format(series_ref.series_key)
-        self.info_text.insert('1.0', info)
+        info += "\nExpande el nodo para ver los issues."
+        self.metadata_display.insert('1.0', info)
+        self.metadata_display.config(state=tk.DISABLED)
+        self.apply_xml_button.config(state=tk.DISABLED)
 
         # Load cover in background
         def load_cover():
@@ -2028,6 +2249,247 @@ class SearchDialog(tk.Toplevel):
         thread = threading.Thread(target=load_cover)
         thread.daemon = True
         thread.start()
+
+    def _show_issue_preview_with_metadata(self, issue_ref):
+        '''Show preview of issue with full metadata'''
+        # Clear previous preview
+        self.preview_canvas.delete("all")
+        self.preview_canvas.create_text(
+            self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+            self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+            text='Cargando portada...',
+            font=('Arial', 12), fill='gray40'
+        )
+        self.metadata_display.delete('1.0', tk.END)
+        self.metadata_display.insert('1.0', 'Cargando metadatos...')
+        self.apply_xml_button.config(state=tk.DISABLED)
+        self.update()
+        
+        # Load cover and metadata in background
+        def load_data():
+            # Check if issue_ref is actually a SeriesRef with type='issue'
+            # If so, create a temporary IssueRef
+            from database.dbmodels import IssueRef, SeriesRef
+            
+            actual_issue_ref = issue_ref
+            if isinstance(issue_ref, SeriesRef):
+                # It's a SeriesRef representing an individual issue
+                # Create a temporary IssueRef
+                actual_issue_ref = IssueRef(
+                    issue_num_s="1",  # We don't have the real number yet
+                    issue_key=issue_ref.series_key,  # Use series_key as issue_key
+                    title_s=issue_ref.series_name_s,
+                    thumb_url_s=getattr(issue_ref, 'thumb_url_s', None)
+                )
+                # Copy extra_image_url if exists
+                if hasattr(issue_ref, 'extra_image_url'):
+                    actual_issue_ref.extra_image_url = issue_ref.extra_image_url
+            
+            # Load cover
+            image_data = self._fetch_reference_image_data(actual_issue_ref)
+            
+            # Query full issue details
+            issue = self.db.query_issue_details(actual_issue_ref)
+            
+            def update_ui():
+                # Show cover
+                if image_data:
+                    try:
+                        image = Image.open(BytesIO(image_data))
+                        self._display_preview_image(image)
+                    except Exception as e:
+                        self.preview_canvas.delete("all")
+                        self.preview_canvas.create_text(
+                            self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+                            self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+                            text='Error mostrando portada',
+                            font=('Arial', 12), fill='red'
+                        )
+                else:
+                    self.preview_canvas.delete("all")
+                    self.preview_canvas.create_text(
+                        self.preview_canvas.winfo_width() // 2 if self.preview_canvas.winfo_width() > 10 else 200,
+                        self.preview_canvas.winfo_height() // 2 if self.preview_canvas.winfo_height() > 10 else 300,
+                        text='Sin portada disponible',
+                        font=('Arial', 12), fill='gray40'
+                    )
+                
+                # Show metadata
+                if issue:
+                    # Convert to metadata dict (similar to main GUI)
+                    metadata_dict = self._issue_to_metadata_dict(issue)
+                    
+                    # Generate XML
+                    from comicinfo_xml import ComicInfoGenerator
+                    xml_generator = ComicInfoGenerator()
+                    xml_content = xml_generator.generate_xml(metadata_dict)
+                    
+                    # Store for toggling
+                    self.current_metadata_xml = xml_content
+                    self.current_metadata_dict = metadata_dict
+                    self.current_issue = issue
+                    
+                    # Display based on current view mode
+                    self._toggle_metadata_view()
+                    
+                    # Enable apply button
+                    self.apply_xml_button.config(state=tk.NORMAL)
+                else:
+                    self.metadata_display.delete('1.0', tk.END)
+                    self.metadata_display.insert('1.0', 'Error: No se pudieron obtener los metadatos')
+                    self.current_metadata_xml = None
+                    self.current_metadata_dict = None
+                    self.current_issue = None
+            
+            self.after(0, update_ui)
+        
+        thread = threading.Thread(target=load_data)
+        thread.daemon = True
+        thread.start()
+    
+    def _issue_to_metadata_dict(self, issue):
+        '''Convert Issue object to metadata dictionary (same as main GUI)'''
+        metadata = {
+            'title': issue.title_s,
+            'series': issue.series_name_s,
+            'number': issue.issue_num_s,
+            'count': issue.issue_count_n if issue.issue_count_n > 0 else None,
+            'volume': issue.volume_year_n if issue.volume_year_n > 0 else None,
+            'summary': issue.summary_s,
+            'publisher': issue.publisher_s,
+            'year': issue.pub_year_n if issue.pub_year_n > 0 else None,
+            'month': issue.pub_month_n if issue.pub_month_n > 0 else None,
+            'day': issue.pub_day_n if issue.pub_day_n > 0 else None,
+            'writer': issue.writers_sl,
+            'penciller': issue.pencillers_sl,
+            'inker': issue.inkers_sl,
+            'colorist': issue.colorists_sl,
+            'letterer': issue.letterers_sl,
+            'cover_artist': issue.cover_artists_sl,
+            'editor': issue.editors_sl,
+            'translator': issue.translators_sl,
+            'genre': ', '.join(issue.crossovers_sl) if issue.crossovers_sl else None,
+            'characters': ', '.join(issue.characters_sl) if issue.characters_sl else None,
+            'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
+            'language_iso': 'es',
+            'format': issue.format_s,
+            'binding': issue.binding_s,
+            'dimensions': issue.dimensions_s,
+            'isbn': issue.isbn_s,
+            'legal_deposit': issue.legal_deposit_s,
+            'price': issue.price_s,
+            'original_title': issue.origin_title_s,
+            'original_publisher': issue.origin_publisher_s,
+            'web': issue.webpage_s
+        }
+        return metadata
+    
+    def _toggle_metadata_view(self):
+        '''Toggle between pretty and XML metadata view'''
+        if not self.current_metadata_dict and not self.current_metadata_xml:
+            return
+        
+        mode = self.metadata_view_mode.get()
+        self.metadata_display.config(state=tk.NORMAL)
+        self.metadata_display.delete('1.0', tk.END)
+        
+        if mode == 'pretty':
+            # Show formatted metadata
+            text = self._format_metadata_pretty(self.current_metadata_dict)
+            self.metadata_display.insert('1.0', text)
+        else:
+            # Show XML
+            if self.current_metadata_xml:
+                self.metadata_display.insert('1.0', self.current_metadata_xml)
+            else:
+                self.metadata_display.insert('1.0', 'XML no disponible')
+        
+        self.metadata_display.config(state=tk.DISABLED)
+    
+    def _format_metadata_pretty(self, metadata):
+        '''Format metadata dictionary for pretty display (same as main GUI)'''
+        # Use parent's method if available
+        if hasattr(self.parent, '_format_metadata_pretty'):
+            return self.parent._format_metadata_pretty(metadata)
+        
+        # Fallback implementation
+        lines = []
+        if metadata.get('title'):
+            lines.append(f"Título: {metadata['title']}")
+        if metadata.get('series'):
+            lines.append(f"Serie: {metadata['series']}")
+        if metadata.get('number'):
+            lines.append(f"Número: {metadata['number']}")
+        if metadata.get('count'):
+            lines.append(f"Total números: {metadata['count']}")
+        if metadata.get('volume'):
+            lines.append(f"Volumen: {metadata['volume']}")
+        if metadata.get('publisher'):
+            lines.append(f"Editorial: {metadata['publisher']}")
+        if metadata.get('year'):
+            date_parts = []
+            if metadata.get('day'):
+                date_parts.append(str(metadata['day']))
+            if metadata.get('month'):
+                date_parts.append(str(metadata['month']))
+            date_parts.append(str(metadata['year']))
+            lines.append(f"Fecha: {'/'.join(date_parts)}")
+        if metadata.get('summary'):
+            lines.append(f"\nResumen:\n{metadata['summary']}")
+        if metadata.get('writer'):
+            lines.append(f"\nGuionista: {metadata['writer']}")
+        if metadata.get('penciller'):
+            lines.append(f"Dibujante: {metadata['penciller']}")
+        if metadata.get('inker'):
+            lines.append(f"Entintador: {metadata['inker']}")
+        if metadata.get('colorist'):
+            lines.append(f"Colorista: {metadata['colorist']}")
+        if metadata.get('cover_artist'):
+            lines.append(f"Portadista: {metadata['cover_artist']}")
+        if metadata.get('web'):
+            lines.append(f"\nWeb: {metadata['web']}")
+        return '\n'.join(lines) if lines else 'Sin metadatos disponibles'
+    
+    def _apply_comicinfo_xml(self):
+        '''Apply ComicInfo.xml to the comic file'''
+        if not self.current_metadata_xml or not self.current_issue:
+            messagebox.showwarning("Advertencia", "No hay metadatos para aplicar")
+            return
+        
+        if not self.comic or not self.comic.filepath:
+            messagebox.showerror("Error", "No hay archivo de cómic seleccionado")
+            return
+        
+        # Check if file is CBR and convert to CBZ first
+        filepath = self.comic.filepath
+        if filepath.lower().endswith('.cbr'):
+            # Convert CBR to CBZ
+            if hasattr(self.parent, '_convert_cbr_to_cbz'):
+                try:
+                    self._log("🔄 Convirtiendo CBR a CBZ...")
+                    filepath = self.parent._convert_cbr_to_cbz(filepath)
+                    self.comic.filepath = filepath
+                    self.comic.filename = os.path.basename(filepath)
+                    self._log("✅ Conversión completada")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error convirtiendo CBR a CBZ: {str(e)}")
+                    self._log(f"❌ Error en conversión: {str(e)}")
+                    return
+            else:
+                messagebox.showerror("Error", "No se puede acceder al método de conversión CBR a CBZ")
+                return
+        
+        # Use parent's method to inject XML
+        if hasattr(self.parent, '_inject_xml'):
+            try:
+                self.parent._inject_xml(filepath, self.current_metadata_xml)
+                messagebox.showinfo("Éxito", "ComicInfo.xml aplicado correctamente")
+                self._log("✅ ComicInfo.xml aplicado a: {}".format(self.comic.filename))
+            except Exception as e:
+                messagebox.showerror("Error", f"Error aplicando ComicInfo.xml: {str(e)}")
+                self._log(f"❌ Error aplicando ComicInfo.xml: {str(e)}")
+        else:
+            messagebox.showerror("Error", "No se puede acceder al método de inyección de XML")
 
     def _display_preview_image(self, image):
         '''Display image in preview canvas, scaled to fit'''

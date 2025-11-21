@@ -27,12 +27,6 @@ class TebeoSferaParser(object):
             log_callback: Optional function to call for logging (takes a string message)
         '''
         self.log_callback = log_callback
-        # Test the callback
-        if self.log_callback:
-            try:
-                self.log_callback("[SYNOPSIS] Parser initialized with log callback")
-            except:
-                pass
     
     def _log(self, message):
         '''Log a message using callback if available, otherwise use utils_compat.log'''
@@ -199,7 +193,6 @@ class TebeoSferaParser(object):
         # Also capture relevant technical info (pages, translation) that comes before it
         comentario_match = re.search(r'Comentario\s+de\s+la\s+editorial:', html_content, re.IGNORECASE)
         if comentario_match:
-            self._log("[SYNOPSIS] Trying Pattern 0: 'Comentario de la editorial:'")
             comentario_start = comentario_match.start()
             
             # Look backwards to find relevant technical info (pages, translation, etc.)
@@ -250,23 +243,15 @@ class TebeoSferaParser(object):
             if end_pos > start_pos:
                 content = html_content[start_pos:end_pos]
                 synopsis_after = self._strip_tags(content)
-                cleaned_after = self._clean_text(synopsis_after)
+                cleaned_after = self._clean_text_preserve_newlines(synopsis_after)
                 
                 # Combine: technical info + "Comentario de la editorial:" + synopsis
                 all_parts = relevant_before + [cleaned_after] if cleaned_after else relevant_before
                 combined = '\n\n'.join(all_parts)
                 
-                self._log(f"[SYNOPSIS] Pattern 0 extracted {len(combined)} chars ({len(relevant_before)} before + {len(cleaned_after)} after, stopped at: {found_marker or 'end'})")
                 # Only use if it's substantial text (> 100 chars)
                 if combined and len(combined) > 100:
-                    self._log(f"[SYNOPSIS] Pattern 0 ACCEPTED: {len(combined)} chars")
                     metadata['synopsis'] = combined
-                else:
-                    self._log(f"[SYNOPSIS] Pattern 0 REJECTED: too short ({len(combined) if combined else 0} chars)")
-            else:
-                self._log("[SYNOPSIS] Pattern 0: no content found after 'Comentario de la editorial:'")
-        else:
-            self._log("[SYNOPSIS] Pattern 0: 'Comentario de la editorial:' not found")
         
         # Pattern 1: "Información de la editorial:" section - capture ALL content including promo
         # This is the most complete source, capturing everything from the description to the end
@@ -290,7 +275,6 @@ class TebeoSferaParser(object):
             
             if info_start:
                 start_pos = info_start.end()
-                self._log(f"[SYNOPSIS] Found 'Información de la editorial:' at position {start_pos}")
                 
                 # Find the end: look for common delimiters
                 end_markers = [
@@ -316,28 +300,21 @@ class TebeoSferaParser(object):
                 if end_pos > start_pos:
                     content = html_content[start_pos:end_pos]
                     synopsis = self._strip_tags(content)
-                    cleaned = self._clean_text(synopsis)
-                    self._log(f"[SYNOPSIS] Pattern 1 extracted {len(cleaned)} chars (stopped at: {found_marker or 'end'})")
+                    cleaned = self._clean_text_preserve_newlines(synopsis)
                     # Only use if it's substantial text (> 100 chars)
                     if cleaned and len(cleaned) > 100:
-                        self._log(f"[SYNOPSIS] Pattern 1 ACCEPTED: {len(cleaned)} chars")
                         metadata['synopsis'] = cleaned
-                    else:
-                        self._log(f"[SYNOPSIS] Pattern 1 REJECTED: too short ({len(cleaned)} chars)")
-            else:
-                self._log("[SYNOPSIS] Pattern 1: 'Información de la editorial:' not found")
         
         # Pattern 1.5: Look for long paragraphs that combine technical info + synopsis
         # These often start with book details but contain the actual synopsis
         if not metadata.get('synopsis'):
-            self._log("[SYNOPSIS] Trying Pattern 1.5: combined technical + narrative paragraph")
             paragraphs = re.findall(
                 r'<p[^>]*>(.*?)</p>',
                 html_content, re.DOTALL | re.IGNORECASE
             )
             
             for para in paragraphs:
-                text = self._clean_text(self._strip_tags(para))
+                text = self._clean_text_preserve_newlines(self._strip_tags(para))
                 if text and len(text) > 200:  # Must be long (likely combined)
                     text_lower = text.lower()
                     
@@ -351,16 +328,11 @@ class TebeoSferaParser(object):
                     
                     if has_tech_start and has_narrative:
                         # This is likely a combined paragraph - use it!
-                        self._log(f"[SYNOPSIS] Pattern 1.5 matched: {len(text)} chars (technical start + narrative content)")
                         metadata['synopsis'] = text
                         break
-            
-            if not metadata.get('synopsis'):
-                self._log("[SYNOPSIS] Pattern 1.5: no combined paragraph found")
         
         # Pattern 2: "Promoción editorial:" - capture until next section or end
         if not metadata.get('synopsis'):
-            self._log("[SYNOPSIS] Trying Pattern 2: 'Promoción editorial:'")
             promo_patterns = [
                 (r'<strong>Promoción editorial:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos|tebeoafines)|Muestras|$)', 'strong tag'),
                 (r'Promoción\s+editorial:\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos)|$)', 'text only'),
@@ -369,38 +341,25 @@ class TebeoSferaParser(object):
                 promo_match = re.search(pattern, html_content, re.DOTALL | re.IGNORECASE)
                 if promo_match:
                     synopsis = self._strip_tags(promo_match.group(1))
-                    cleaned = self._clean_text(synopsis)
-                    self._log(f"[SYNOPSIS] Pattern 2 ({pattern_name}) found {len(cleaned)} chars")
+                    cleaned = self._clean_text_preserve_newlines(synopsis)
                     if cleaned and len(cleaned) > 50:
-                        self._log(f"[SYNOPSIS] Pattern 2 ACCEPTED: {len(cleaned)} chars")
                         metadata['synopsis'] = cleaned
                         break
-                    else:
-                        self._log(f"[SYNOPSIS] Pattern 2 REJECTED: too short ({len(cleaned)} chars)")
-            if not metadata.get('synopsis'):
-                self._log("[SYNOPSIS] Pattern 2: no match found")
         
         # Pattern 3: "Argumento:" label - capture until next section
         if not metadata.get('synopsis'):
-            self._log("[SYNOPSIS] Trying Pattern 3: 'Argumento:'")
             arg_match = re.search(
                 r'<strong>Argumento:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos))',
                 html_content, re.DOTALL | re.IGNORECASE
             )
             if arg_match:
                 synopsis = self._strip_tags(arg_match.group(1))
-                cleaned = self._clean_text(synopsis)
+                cleaned = self._clean_text_preserve_newlines(synopsis)
                 if cleaned and len(cleaned) > 50:
-                    self._log(f"[SYNOPSIS] Pattern 3 matched: {len(cleaned)} chars")
                     metadata['synopsis'] = cleaned
-                else:
-                    self._log(f"[SYNOPSIS] Pattern 3 REJECTED: too short ({len(cleaned) if cleaned else 0} chars)")
-            else:
-                self._log("[SYNOPSIS] Pattern 3: 'Argumento:' not found")
         
         # Pattern 4: Text in <p class="texto"> (main description) - capture ALL paragraphs
         if not metadata.get('synopsis'):
-            self._log("[SYNOPSIS] Trying Pattern 4: <p class='texto'>")
             # First, find the container that holds the description paragraphs
             # Look for a div or section that contains multiple <p class="texto"> tags
             texto_container = re.search(
@@ -415,19 +374,14 @@ class TebeoSferaParser(object):
                 )
                 all_text = []
                 for para in paragraphs:
-                    text = self._clean_text(self._strip_tags(para))
+                    text = self._clean_text_preserve_newlines(self._strip_tags(para))
                     if text and len(text) > 10:  # Skip very short paragraphs
                         all_text.append(text)
                 
                 if all_text:
-                    combined = ' '.join(all_text)
+                    combined = '\n\n'.join(all_text)
                     if len(combined) > 50:
-                        self._log(f"[SYNOPSIS] Pattern 4 matched: {len(combined)} chars from {len(all_text)} paragraphs")
                         metadata['synopsis'] = combined
-                    else:
-                        self._log(f"[SYNOPSIS] Pattern 4 REJECTED: too short ({len(combined)} chars)")
-                else:
-                    self._log("[SYNOPSIS] Pattern 4: no substantial paragraphs found")
             else:
                 # Fallback: single <p class="texto">
                 desc_match = re.search(
@@ -436,18 +390,12 @@ class TebeoSferaParser(object):
                 )
                 if desc_match:
                     description = self._strip_tags(desc_match.group(1))
-                    cleaned_desc = self._clean_text(description)
+                    cleaned_desc = self._clean_text_preserve_newlines(description)
                     if cleaned_desc and len(cleaned_desc) > 20:
-                        self._log(f"[SYNOPSIS] Pattern 4 (single) matched: {len(cleaned_desc)} chars")
                         metadata['synopsis'] = cleaned_desc
-                    else:
-                        self._log(f"[SYNOPSIS] Pattern 4 (single) REJECTED: too short ({len(cleaned_desc) if cleaned_desc else 0} chars)")
-                else:
-                    self._log("[SYNOPSIS] Pattern 4: <p class='texto'> not found")
         
         # Pattern 5: Look for description section - capture everything between title and next major section
         if not metadata.get('synopsis'):
-            self._log("[SYNOPSIS] Trying Pattern 5: description section")
             # Look for a section that contains substantial descriptive text
             # Common patterns: after "Información" or before "Datos técnicos"
             desc_section = re.search(
@@ -463,26 +411,18 @@ class TebeoSferaParser(object):
                 )
                 all_text = []
                 for para in paragraphs:
-                    text = self._clean_text(self._strip_tags(para))
+                    text = self._clean_text_preserve_newlines(self._strip_tags(para))
                     # Skip metadata-like content
                     if text and len(text) > 20 and not any(skip in text.lower() for skip in ['isbn', 'depósito', 'precio', 'páginas', 'formato', 'tamaño']):
                         all_text.append(text)
                 
                 if all_text:
-                    combined = ' '.join(all_text)
+                    combined = '\n\n'.join(all_text)
                     if len(combined) > 50:
-                        self._log(f"[SYNOPSIS] Pattern 5 matched: {len(combined)} chars from {len(all_text)} paragraphs")
                         metadata['synopsis'] = combined
-                    else:
-                        self._log(f"[SYNOPSIS] Pattern 5 REJECTED: too short ({len(combined)} chars)")
-                else:
-                    self._log("[SYNOPSIS] Pattern 5: no substantial paragraphs found in section")
-            else:
-                self._log("[SYNOPSIS] Pattern 5: description section not found")
         
         # Pattern 6: Fallback - find the LONGEST substantial paragraph (not just the first)
         if not metadata.get('synopsis'):
-            self._log("[SYNOPSIS] Trying Pattern 6: fallback - longest substantial paragraph")
             paragraphs = re.findall(
                 r'<p[^>]*>(.*?)</p>',
                 html_content, re.DOTALL | re.IGNORECASE
@@ -508,7 +448,7 @@ class TebeoSferaParser(object):
             ]
             
             for para in paragraphs:
-                text = self._clean_text(self._strip_tags(para))
+                text = self._clean_text_preserve_newlines(self._strip_tags(para))
                 # Look for substantial paragraphs (> 50 chars, not just metadata)
                 if text and len(text) > 50:
                     text_lower = text.lower()
@@ -529,7 +469,6 @@ class TebeoSferaParser(object):
                     # Only skip if it has technical keywords BUT NO narrative keywords AND no quotes
                     if skip_count >= 2 and good_count == 0 and not has_quotes:
                         # Pure technical/metadata paragraph - skip it
-                        self._log(f"[SYNOPSIS] Pattern 6: skipping pure technical paragraph ({skip_count} tech, 0 narrative, no quotes): {text[:80]}...")
                         continue
                     
                     # Score: length + strong bonus for narrative keywords and quotes
@@ -547,17 +486,12 @@ class TebeoSferaParser(object):
                         if skip_count > 0:
                             score -= 150 * skip_count  # Stronger penalty
                     
-                    self._log(f"[SYNOPSIS] Pattern 6 candidate: {len(text)} chars, {good_count} narrative keywords, {skip_count} tech keywords, score: {score}")
-                    
                     if score > best_score:
                         best_score = score
                         best_para = text
             
             if best_para:
-                self._log(f"[SYNOPSIS] Pattern 6 matched: {len(best_para)} chars (best score: {best_score} of {len(paragraphs)} paragraphs)")
                 metadata['synopsis'] = best_para
-            else:
-                self._log("[SYNOPSIS] Pattern 6: no suitable paragraph found")
 
         # Extract cover image (the first/main one)
         cover_match = re.search(
@@ -594,11 +528,6 @@ class TebeoSferaParser(object):
             if series_year_match:
                 metadata['volume_year'] = int(series_year_match.group(1))
 
-        # Log synopsis extraction for debugging
-        if metadata.get('synopsis'):
-            self._log(f"[OK] Synopsis extracted ({len(metadata['synopsis'])} chars): {metadata['synopsis'][:100]}...")
-        else:
-            self._log("[WARN] No synopsis found in page")
 
         return metadata
 
@@ -758,26 +687,274 @@ class TebeoSferaParser(object):
         results = []
         from utils_compat import log
 
-        # Parse each result line: <div class="linea_resultados">...</div>
-        # This is the most reliable way to get complete result information
-        # Need to match the opening div and find the matching closing div (handling nested divs)
+        # New approach: Parse by sections marked with <div class="help-block">
+        # Sections are: Colecciones, Sagas, Números, Autores, etc.
+        # Everything between a section header and the next one belongs to that section
+        
+        # Find all section headers
+        section_pattern = r'<div[^>]*class="[^"]*help-block[^"]*"[^>]*>([^<]+)</div>'
+        section_matches = list(re.finditer(section_pattern, html_content, re.IGNORECASE))
+        
+        log.debug("Found {0} section headers".format(len(section_matches)))
+        
+        # Process each section
+        for i, section_match in enumerate(section_matches):
+            section_title = self._clean_text(section_match.group(1)).strip()
+            section_start = section_match.end()
+            
+            # Find end of section (start of next section or end of content)
+            section_end = len(html_content)
+            if i + 1 < len(section_matches):
+                section_end = section_matches[i + 1].start()
+            
+            section_content = html_content[section_start:section_end]
+            
+            # Determine section type
+            section_type = None
+            if 'coleccion' in section_title.lower():
+                section_type = 'collection'
+            elif 'saga' in section_title.lower():
+                section_type = 'saga'
+            elif 'número' in section_title.lower() or 'numero' in section_title.lower():
+                section_type = 'issue'
+            elif 'autor' in section_title.lower():
+                # Skip autores section
+                continue
+            else:
+                # Unknown section, skip
+                log.debug("Unknown section type: {0}".format(section_title))
+                continue
+            
+            log.debug("Processing section: {0} (type: {1})".format(section_title, section_type))
+            
+            # Parse results in this section
+            section_results = self._parse_section_results(section_content, section_type)
+            results.extend(section_results)
+            log.debug("Found {0} results in section '{1}'".format(len(section_results), section_title))
+        
+        # Fallback: if no sections found, use old method
+        if not results:
+            log.debug("No sections found, falling back to linea_resultados parsing")
+            lineas = []
+            pos = 0
+            while True:
+                start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
+                if not start_match:
+                    break
+                
+                start_pos = pos + start_match.end()
+                depth = 1
+                search_pos = start_pos
+                end_pos = None
+                
+                while depth > 0 and search_pos < len(html_content):
+                    next_tag = re.search(r'</?div[^>]*>', html_content[search_pos:], re.IGNORECASE)
+                    if not next_tag:
+                        break
+                    
+                    tag_pos = search_pos + next_tag.start()
+                    tag = next_tag.group(0).lower()
+                    
+                    if tag.startswith('</div'):
+                        depth -= 1
+                        if depth == 0:
+                            end_pos = tag_pos
+                            break
+                    elif tag.startswith('<div'):
+                        depth += 1
+                    
+                    search_pos = tag_pos + next_tag.end()
+                
+                if end_pos:
+                    linea_content = html_content[start_pos:end_pos]
+                    lineas.append((start_pos, end_pos, linea_content))
+                    pos = end_pos + 6
+                else:
+                    break
+            
+            if not lineas:
+                linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
+                simple_lineas = list(re.finditer(linea_pattern, html_content, re.DOTALL | re.IGNORECASE))
+                lineas = [(m.start(), m.end(), m.group(1)) for m in simple_lineas]
+            
+            log.debug("Found {0} result lines (linea_resultados)".format(len(lineas)))
+            
+            for linea_info in lineas:
+                if isinstance(linea_info, tuple):
+                    _, _, linea_content = linea_info
+                else:
+                    linea_content = linea_info.group(1)
+                
+                # Extract image URL (thumbnail) - look for img with id="img_principal"
+                # The img can be directly in the div or inside an <a> tag
+                img_match = re.search(r'<img[^>]*id="img_principal"[^>]*src="([^"]+)"', linea_content, re.IGNORECASE)
+                thumb_url = img_match.group(1) if img_match else None
+                if thumb_url and not thumb_url.startswith('http'):
+                    thumb_url = 'https://www.tebeosfera.com' + thumb_url
+
+                full_image_match = re.search(
+                    r'<a[^>]*href="([^"]+)"[^>]*>\s*<img[^>]*id="img_principal"',
+                    linea_content,
+                    re.IGNORECASE
+                )
+                full_image_url = full_image_match.group(1) if full_image_match else None
+                if full_image_url and not full_image_url.startswith('http'):
+                    full_image_url = 'https://www.tebeosfera.com' + full_image_url
+                
+                # Extract link and slug - can be issue, collection, or saga
+                # Search for ALL types and prioritize collections/sagas over issues
+                # (since a result might have multiple links, we want the main one)
+                link_match = None
+                result_type = None
+                url = None
+                slug = None
+                
+                # Try saga link first (highest priority)
+                saga_match = re.search(r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                if saga_match:
+                    link_match = saga_match
+                    result_type = 'saga'
+                    url = saga_match.group(1)
+                    slug = saga_match.group(2)
+                
+                # Try collection link (second priority)
+                if not link_match:
+                    collection_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                    if collection_match:
+                        link_match = collection_match
+                        result_type = 'collection'
+                        url = collection_match.group(1)
+                        slug = collection_match.group(2)
+                
+                # Try issue link last (lowest priority)
+                if not link_match:
+                    issue_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                    if issue_match:
+                        link_match = issue_match
+                        result_type = 'issue'
+                        url = issue_match.group(1)
+                        slug = issue_match.group(2)
+                
+                if not link_match:
+                    # No recognized link type found
+                    continue
+                
+                # Extract link text (everything between <a> and </a>, handling nested tags)
+                link_start = link_match.end()
+                link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
+                if not link_end_match:
+                    continue
+                link_text = linea_content[link_start:link_start+link_end_match.start()]
+                title = self._clean_text(self._strip_tags(link_text))
+                
+                # For collections and sagas, they are series/groups, not individual issues
+                if result_type in ['collection', 'saga']:
+                    results.append({
+                        'slug': slug,
+                        'title': title,
+                        'url': url,
+                        'thumb_url': thumb_url,
+                        'image_url': full_image_url or thumb_url,
+                        'series_name': title,  # For collections/sagas, title IS the series name
+                        'type': result_type
+                    })
+                    continue
+                
+                # If we get here, it's an issue (/numeros/)
+                # The url, slug, and title were already extracted above
+                full_title = title
+                
+                # Parse series name from format: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
+                # Or: "SERIE (AÑO, EDITORIAL) NÚMERO"
+                # Or: "SERIE (AÑO, EDITORIAL) : TÍTULO"
+                # Or: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
+                series_name = None
+                issue_title = None
+                
+                # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
+                series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
+                if series_match:
+                    series_name = self._clean_text(series_match.group(1))
+                    issue_title = self._clean_text(series_match.group(3))
+                else:
+                    # Try pattern: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
+                    series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
+                    if series_match:
+                        series_name = self._clean_text(series_match.group(1))
+                        issue_title = self._clean_text(series_match.group(4))
+                    else:
+                        # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO"
+                        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]+)$', full_title)
+                        if series_match:
+                            series_name = self._clean_text(series_match.group(1))
+                            issue_title = self._clean_text(series_match.group(2))
+                        else:
+                            # Try pattern: "SERIE (AÑO, EDITORIAL) : TÍTULO"
+                            series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*:\s*(.+)$', full_title)
+                            if series_match:
+                                series_name = self._clean_text(series_match.group(1))
+                                issue_title = self._clean_text(series_match.group(2))
+                            else:
+                                # Try pattern: "SERIE -SUBTÍTULO- NÚMERO"
+                                series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]+)$', full_title)
+                                if series_match:
+                                    series_name = self._clean_text(series_match.group(1))
+                                    issue_title = self._clean_text(series_match.group(3))
+                                else:
+                                    # Fallback: use first part before parentheses or dash
+                                    series_match = re.match(r'^(.+?)(?:\s*\(|\s*-)', full_title)
+                                    if series_match:
+                                        series_name = self._clean_text(series_match.group(1))
+                                    else:
+                                        # Last resort: use slug to guess series name
+                                        # Take first 2-3 parts of slug as series name
+                                        slug_parts = slug.split('_')
+                                        if len(slug_parts) >= 2:
+                                            series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
+                                        else:
+                                            series_name = slug.split('_')[0].replace('_', ' ').title()
+                
+                if series_name:
+                    results.append({
+                        'slug': slug,
+                        'title': full_title,
+                        'url': url,
+                        'thumb_url': thumb_url,
+                        'image_url': full_image_url or thumb_url,
+                        'series_name': series_name.strip(),
+                        'issue_title': issue_title.strip() if issue_title else None,
+                        'type': 'issue'
+                    })
+
+        log.debug("Parser returning {0} total results".format(len(results)))
+        return results
+
+    def _parse_section_results(self, section_content, section_type):
+        '''
+        Parse results from a section (Colecciones, Sagas, Números, etc.)
+        
+        section_content: HTML content of the section
+        section_type: 'collection', 'saga', or 'issue'
+        Returns: List of result dictionaries
+        '''
+        results = []
+        from utils_compat import log
+        
+        # Find all linea_resultados in this section
         lineas = []
         pos = 0
         while True:
-            # Find next opening div with class="linea_resultados"
-            start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
+            start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', section_content[pos:], re.IGNORECASE)
             if not start_match:
                 break
             
             start_pos = pos + start_match.end()
-            # Find matching closing </div> by counting nested divs
             depth = 1
             search_pos = start_pos
             end_pos = None
             
-            while depth > 0 and search_pos < len(html_content):
-                # Look for next <div or </div>
-                next_tag = re.search(r'</?div[^>]*>', html_content[search_pos:], re.IGNORECASE)
+            while depth > 0 and search_pos < len(section_content):
+                next_tag = re.search(r'</?div[^>]*>', section_content[search_pos:], re.IGNORECASE)
                 if not next_tag:
                     break
                 
@@ -795,29 +972,21 @@ class TebeoSferaParser(object):
                 search_pos = tag_pos + next_tag.end()
             
             if end_pos:
-                linea_content = html_content[start_pos:end_pos]
-                lineas.append((start_pos, end_pos, linea_content))
-                pos = end_pos + 6  # Move past </div>
+                linea_content = section_content[start_pos:end_pos]
+                lineas.append(linea_content)
+                pos = end_pos + 6
             else:
-                # Fallback: use simple pattern if matching fails
                 break
         
-        # Fallback to simple pattern if nested matching failed
+        # Fallback to simple pattern
         if not lineas:
             linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
-            simple_lineas = list(re.finditer(linea_pattern, html_content, re.DOTALL | re.IGNORECASE))
-            lineas = [(m.start(), m.end(), m.group(1)) for m in simple_lineas]
+            simple_lineas = re.finditer(linea_pattern, section_content, re.DOTALL | re.IGNORECASE)
+            lineas = [m.group(1) for m in simple_lineas]
         
-        log.debug("Found {0} result lines (linea_resultados)".format(len(lineas)))
-        
-        for linea_info in lineas:
-            if isinstance(linea_info, tuple):
-                _, _, linea_content = linea_info
-            else:
-                linea_content = linea_info.group(1)
-            
-            # Extract image URL (thumbnail) - look for img with id="img_principal"
-            # The img can be directly in the div or inside an <a> tag
+        # Parse each result in this section
+        for linea_content in lineas:
+            # Extract image URL (thumbnail)
             img_match = re.search(r'<img[^>]*id="img_principal"[^>]*src="([^"]+)"', linea_content, re.IGNORECASE)
             thumb_url = img_match.group(1) if img_match else None
             if thumb_url and not thumb_url.startswith('http'):
@@ -832,29 +1001,33 @@ class TebeoSferaParser(object):
             if full_image_url and not full_image_url.startswith('http'):
                 full_image_url = 'https://www.tebeosfera.com' + full_image_url
             
-            # Extract link and slug - can be issue, collection, or saga
-            # Try issue link first (/numeros/)
-            link_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-            result_type = 'issue'
+            # Find the main link - use the section type to determine which link to look for
+            link_match = None
+            url = None
+            slug = None
             
-            if not link_match:
-                # Try collection link (/colecciones/)
-                link_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-                result_type = 'collection'
-            
-            if not link_match:
-                # Try saga link (/sagas/)
+            if section_type == 'saga':
                 link_match = re.search(r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
-                result_type = 'saga'
+            elif section_type == 'collection':
+                link_match = re.search(r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+            else:  # issue
+                link_match = re.search(r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
             
             if not link_match:
-                # No recognized link type found
+                # Try any link as fallback
+                any_link = re.search(r'<a[^>]*href="(/(?:numeros|colecciones|sagas)/([^"]+)\.html)"[^>]*>', linea_content, re.IGNORECASE)
+                if any_link:
+                    link_match = any_link
+                    url = any_link.group(1)
+                    slug = any_link.group(2)
+            else:
+                url = link_match.group(1)
+                slug = link_match.group(2)
+            
+            if not link_match:
                 continue
             
-            url = link_match.group(1)
-            slug = link_match.group(2)
-            
-            # Extract link text (everything between <a> and </a>, handling nested tags)
+            # Extract link text
             link_start = link_match.end()
             link_end_match = re.search(r'</a>', linea_content[link_start:], re.IGNORECASE)
             if not link_end_match:
@@ -862,86 +1035,71 @@ class TebeoSferaParser(object):
             link_text = linea_content[link_start:link_start+link_end_match.start()]
             title = self._clean_text(self._strip_tags(link_text))
             
-            # For collections and sagas, they are series/groups, not individual issues
-            if result_type in ['collection', 'saga']:
+            # For collections and sagas, title IS the series name
+            if section_type in ['collection', 'saga']:
                 results.append({
                     'slug': slug,
                     'title': title,
                     'url': url,
                     'thumb_url': thumb_url,
                     'image_url': full_image_url or thumb_url,
-                    'series_name': title,  # For collections/sagas, title IS the series name
-                    'type': result_type
+                    'series_name': title,
+                    'type': section_type
                 })
-                continue
-            
-            # If we get here, it's an issue (/numeros/)
-            # The url, slug, and title were already extracted above
-            full_title = title
-            
-            # Parse series name from format: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
-            # Or: "SERIE (AÑO, EDITORIAL) NÚMERO"
-            # Or: "SERIE (AÑO, EDITORIAL) : TÍTULO"
-            # Or: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
-            series_name = None
-            issue_title = None
-            
-            # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
-            series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
-            if series_match:
-                series_name = self._clean_text(series_match.group(1))
-                issue_title = self._clean_text(series_match.group(3))
             else:
-                # Try pattern: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
-                series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
+                # For issues, parse series name from title
+                full_title = title
+                series_name = None
+                issue_title = None
+                
+                # Try same patterns as before
+                series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
                 if series_match:
                     series_name = self._clean_text(series_match.group(1))
-                    issue_title = self._clean_text(series_match.group(4))
+                    issue_title = self._clean_text(series_match.group(3))
                 else:
-                    # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO"
-                    series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]+)$', full_title)
+                    series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
                     if series_match:
                         series_name = self._clean_text(series_match.group(1))
-                        issue_title = self._clean_text(series_match.group(2))
+                        issue_title = self._clean_text(series_match.group(4))
                     else:
-                        # Try pattern: "SERIE (AÑO, EDITORIAL) : TÍTULO"
-                        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*:\s*(.+)$', full_title)
+                        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]+)$', full_title)
                         if series_match:
                             series_name = self._clean_text(series_match.group(1))
                             issue_title = self._clean_text(series_match.group(2))
                         else:
-                            # Try pattern: "SERIE -SUBTÍTULO- NÚMERO"
-                            series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]+)$', full_title)
+                            series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*:\s*(.+)$', full_title)
                             if series_match:
                                 series_name = self._clean_text(series_match.group(1))
-                                issue_title = self._clean_text(series_match.group(3))
+                                issue_title = self._clean_text(series_match.group(2))
                             else:
-                                # Fallback: use first part before parentheses or dash
-                                series_match = re.match(r'^(.+?)(?:\s*\(|\s*-)', full_title)
+                                series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]+)$', full_title)
                                 if series_match:
                                     series_name = self._clean_text(series_match.group(1))
+                                    issue_title = self._clean_text(series_match.group(3))
                                 else:
-                                    # Last resort: use slug to guess series name
-                                    # Take first 2-3 parts of slug as series name
-                                    slug_parts = slug.split('_')
-                                    if len(slug_parts) >= 2:
-                                        series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
+                                    series_match = re.match(r'^(.+?)(?:\s*\(|\s*-)', full_title)
+                                    if series_match:
+                                        series_name = self._clean_text(series_match.group(1))
                                     else:
-                                        series_name = slug.split('_')[0].replace('_', ' ').title()
-            
-            if series_name:
-                results.append({
-                    'slug': slug,
-                    'title': full_title,
-                    'url': url,
-                    'thumb_url': thumb_url,
-                    'image_url': full_image_url or thumb_url,
-                    'series_name': series_name.strip(),
-                    'issue_title': issue_title.strip() if issue_title else None,
-                    'type': 'issue'
-                })
-
-        log.debug("Parser returning {0} total results".format(len(results)))
+                                        slug_parts = slug.split('_')
+                                        if len(slug_parts) >= 2:
+                                            series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
+                                        else:
+                                            series_name = slug.split('_')[0].replace('_', ' ').title()
+                
+                if series_name:
+                    results.append({
+                        'slug': slug,
+                        'title': full_title,
+                        'url': url,
+                        'thumb_url': thumb_url,
+                        'image_url': full_image_url or thumb_url,
+                        'series_name': series_name.strip(),
+                        'issue_title': issue_title.strip() if issue_title else None,
+                        'type': 'issue'
+                    })
+        
         return results
 
     def _parse_date(self, date_string):
@@ -998,6 +1156,46 @@ class TebeoSferaParser(object):
         text = text.strip()
 
         return text
+    
+    def _clean_text_preserve_newlines(self, text):
+        '''
+        Clean HTML text preserving newlines and blank lines (for synopsis).
+        
+        text: Text string
+        Returns: Cleaned text with preserved newlines
+        '''
+        if not text:
+            return ''
+        
+        # Decode HTML entities
+        text = self._decode_entities(text)
+        
+        # Replace <br> and <br/> with newlines
+        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        
+        # Replace </p> with newline (paragraph breaks)
+        text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+        
+        # Strip HTML tags
+        text = self._strip_tags(text)
+        
+        # Normalize whitespace: preserve newlines, collapse multiple spaces to single space
+        # But preserve blank lines (multiple consecutive newlines)
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Collapse multiple spaces within a line
+            cleaned_line = re.sub(r'[ \t]+', ' ', line.strip())
+            cleaned_lines.append(cleaned_line)
+        
+        # Join lines, preserving blank lines
+        text = '\n'.join(cleaned_lines)
+        
+        # Remove trailing whitespace from each line but keep blank lines
+        # Remove excessive blank lines (more than 2 consecutive)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        return text.strip()
 
     def _strip_tags(self, html):
         '''

@@ -195,13 +195,56 @@ class TebeoSferaConnection(object):
                 except:
                     collections_html = collections_html.decode('latin-1')
             
-            if collections_html and collections_html.strip():
-                all_results_html.append(collections_html)
+            if collections_html and collections_html.strip() and not collections_html.startswith('Error'):
+                # Add section header for collections
+                collections_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + collections_html
+                all_results_html.append(collections_with_header)
                 from utils_compat import log
                 log.debug("Collections AJAX returned {0} bytes".format(len(collections_html)))
         except Exception as e:
             from utils_compat import log
             log.debug("Error fetching collections via AJAX: {0}".format(sstr(e)))
+        
+        # Search in sagas
+        try:
+            sagas_data = urllib.parse.urlencode({
+                'tabla': 'T3_sagas',
+                'busqueda': original_query
+            }).encode('utf-8')
+            
+            sagas_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            request = urllib.request.Request(sagas_url, data=sagas_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            sagas_html = response.read()
+            
+            # Check if response is gzipped
+            if sagas_html.startswith(b'\x1f\x8b'):  # gzip magic number
+                sagas_html = gzip.decompress(sagas_html)
+            
+            # Decode response
+            charset = self._get_charset(response)
+            if charset:
+                sagas_html = sagas_html.decode(charset)
+            else:
+                try:
+                    sagas_html = sagas_html.decode('utf-8')
+                except:
+                    sagas_html = sagas_html.decode('latin-1')
+            
+            if sagas_html and sagas_html.strip() and not sagas_html.startswith('Error'):
+                # Add section header for sagas
+                sagas_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Sagas</div>\n' + sagas_html
+                all_results_html.append(sagas_with_header)
+                from utils_compat import log
+                log.debug("Sagas AJAX returned {0} bytes".format(len(sagas_html)))
+        except Exception as e:
+            from utils_compat import log
+            log.debug("Error fetching sagas via AJAX: {0}".format(sstr(e)))
         
         # Search in numbers (issues)
         try:
@@ -236,8 +279,10 @@ class TebeoSferaConnection(object):
                 except:
                     numbers_html = numbers_html.decode('latin-1')
             
-            if numbers_html and numbers_html.strip():
-                all_results_html.append(numbers_html)
+            if numbers_html and numbers_html.strip() and not numbers_html.startswith('Error'):
+                # Add section header for numbers
+                numbers_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Números</div>\n' + numbers_html
+                all_results_html.append(numbers_with_header)
                 from utils_compat import log
                 log.debug("Numbers AJAX returned {0} bytes".format(len(numbers_html)))
         except Exception as e:
@@ -245,6 +290,7 @@ class TebeoSferaConnection(object):
             log.debug("Error fetching numbers via AJAX: {0}".format(sstr(e)))
         
         # Combine all results into a single HTML string
+        # Section headers are already added to each chunk
         if all_results_html:
             combined_html = '\n'.join(all_results_html)
             from utils_compat import log
