@@ -143,8 +143,8 @@ class ScrapeEngine(object):
             
          log.debug("Scraper terminated normally (scraped {0}, skipped {1})."\
             .format(self.__status[0], self.__status[1]))
-            
-      except Exception, ex:
+
+      except Exception as ex:
          log.handle_error(ex)
          
       finally:
@@ -153,10 +153,9 @@ class ScrapeEngine(object):
                # show the user a dialog describing what was scraped
                with FinishForm(self, self.__status) as finish_form:
                   finish_form.show_form()
-            except Exception, ex:
+            except Exception as ex:
                log.handle_error(ex)
-
-
+               log.debug("Summary dialog could not be displayed.")
 
    # ==========================================================================
    def __scrape(self, books):
