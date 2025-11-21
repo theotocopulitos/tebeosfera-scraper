@@ -696,6 +696,10 @@ class TebeoSferaParser(object):
         section_matches = list(re.finditer(section_pattern, html_content, re.IGNORECASE))
         
         log.debug("Found {0} section headers".format(len(section_matches)))
+        if section_matches:
+            for i, match in enumerate(section_matches):
+                section_title = self._clean_text(match.group(1)).strip()
+                log.debug("  Section {0}: '{1}'".format(i+1, section_title))
         
         # Process each section
         for i, section_match in enumerate(section_matches):
