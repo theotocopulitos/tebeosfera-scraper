@@ -1,6 +1,14 @@
 # TebeoSfera Scraper para Comics Españoles
 
+> ⚠️ **TRABAJO EN PROGRESO** - Este proyecto está en desarrollo activo y tiene limitaciones conocidas.
+
 Scraper completo para extraer metadatos de comics españoles desde tebeosfera.com y generar archivos ComicInfo.xml compatibles con ComicRack, Kavita, y otros lectores de comics.
+
+## ⚠️ Limitaciones Conocidas
+
+- **Gestión de series incompleta**: El scraper actualmente no maneja bien todas las series y colecciones. Funciona mejor con números individuales específicos.
+- **Búsquedas pueden devolver resultados mixtos**: Los resultados pueden incluir ejemplares individuales, colecciones y sagas mezclados, lo que requiere revisión manual para seleccionar el correcto.
+- **Sin caché de resultados**: Cada búsqueda realiza consultas directas a la web, sin almacenamiento local de resultados previos.
 
 ## 🌟 Características
 
