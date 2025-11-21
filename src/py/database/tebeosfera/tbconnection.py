@@ -166,12 +166,15 @@ class TebeoSferaConnection(object):
         
         # Search in collections first
         try:
+            # Try using the megaAjax endpoint similar to numbers
             collections_data = urllib.parse.urlencode({
-                'tabla': 'T3_colecciones',
-                'busqueda': original_query
+                'action': 'buscador_simple_colecciones',
+                'busqueda': original_query,
+                'reg_ini': '0',
+                'rpp': '100'
             }).encode('utf-8')
             
-            collections_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            collections_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
             request = urllib.request.Request(collections_url, data=collections_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
@@ -215,12 +218,15 @@ class TebeoSferaConnection(object):
         
         # Search in sagas
         try:
+            # Try using the megaAjax endpoint similar to numbers
             sagas_data = urllib.parse.urlencode({
-                'tabla': 'T3_sagas',
-                'busqueda': original_query
+                'action': 'buscador_simple_sagas',
+                'busqueda': original_query,
+                'reg_ini': '0',
+                'rpp': '100'
             }).encode('utf-8')
             
-            sagas_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            sagas_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
             request = urllib.request.Request(sagas_url, data=sagas_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
