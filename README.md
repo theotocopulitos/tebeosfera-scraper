@@ -25,7 +25,6 @@ Este scraper es funcional pero **todavía está en desarrollo**.
 
 ## Inicio Rápido
 
-
 ### Interfaz Gráfica (GUI)
 
 ```bash
