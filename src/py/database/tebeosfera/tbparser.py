@@ -201,20 +201,16 @@ class TebeoSferaParser(object):
             publisher_text = self._clean_text(link.get_text())
             if publisher_text:
                 metadata['publisher'] = publisher_text
-                # Look for siblings
-                next_sibling = link.next_sibling
-                while next_sibling:
-                    if hasattr(next_sibling, 'name'):
-                        if next_sibling.name == 'span':
-                            location_text = self._clean_text(next_sibling.get_text())
-                            if location_text:
-                                metadata['publisher_location'] = location_text
-                        elif next_sibling.name == 'img':
-                            country_alt = next_sibling.get('alt', '')
-                            if country_alt:
-                                metadata['publisher_country'] = self._clean_text(country_alt)
-                                break
-                    next_sibling = next_sibling.next_sibling
+        
+                # Use find_next_sibling for robust traversal
+                location_span = link.find_next_sibling('span')
+                if location_span:
+                    metadata['publisher_location'] = self._clean_text(location_span.get_text())
+
+                country_img = link.find_next_sibling('img')
+                if country_img and country_img.get('alt'):
+                    metadata['publisher_country'] = self._clean_text(country_img['alt'])
+        
                 break
 
         # Extract all row-fluid dato fields using BeautifulSoup
