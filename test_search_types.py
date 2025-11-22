@@ -133,7 +133,6 @@ def test_db_adapter_types():
     print("="*80)
     
     # We can't test with real network, but we can verify the code structure
-    db = TebeoSferaDB()
     
     # Create mock results like the parser would return
     mock_results = [
