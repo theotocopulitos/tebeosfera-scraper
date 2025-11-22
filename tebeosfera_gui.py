@@ -928,7 +928,7 @@ class TebeoSferaGUI(ctk.CTk):
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Progress bar using customtkinter
-        self.progress = ctk.CTkProgressBar(status_container, orientation="horizontal")
+        self.progress = ctk.CTkProgressBar(status_container)
         # Initially hidden
 
     def _open_files(self):
@@ -1458,8 +1458,7 @@ class TebeoSferaGUI(ctk.CTk):
 
         # Show progress bar
         self.progress.pack(side=tk.BOTTOM, fill=tk.X, before=self.status_bar)
-        self.progress['maximum'] = len(indices)
-        self.progress['value'] = 0
+        self.progress.set(0)  # CTkProgressBar uses 0.0-1.0 range
 
         # Process comics one by one
         self._batch_process_next(indices, 0)
@@ -1478,10 +1477,12 @@ class TebeoSferaGUI(ctk.CTk):
         self.current_comic_index = index
         comic = self.comic_files[index]
 
-        # Update progress
-        self.progress['value'] = current_index + 1
+        # Update progress (calculate as fraction: current/total)
+        total = len(indices)
+        progress_value = (current_index + 1) / total
+        self.progress.set(progress_value)
         self._update_status("Procesando {0}/{1}: {2}".format(
-            current_index + 1, len(indices), comic.filename))
+            current_index + 1, total, comic.filename))
 
         # If comic already has metadata, generate XML directly
         if comic.metadata and comic.selected_issue:
