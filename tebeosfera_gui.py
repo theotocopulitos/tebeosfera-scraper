@@ -569,10 +569,10 @@ class TebeoSferaGUI(tk.Tk):
         
         # Bind keyboard shortcuts
         self.bind_all("<Control-o>", lambda e: self._open_files())
-        self.bind_all("<Control-Shift-O>", lambda e: self._open_directory())
+        self.bind_all("<Control-Shift-o>", lambda e: self._open_directory())
         self.bind_all("<Control-q>", lambda e: self._on_close())
         self.bind_all("<Control-p>", lambda e: self._process_selected())
-        self.bind_all("<Control-Shift-P>", lambda e: self._process_all())
+        self.bind_all("<Control-Shift-p>", lambda e: self._process_all())
         self.bind_all("<Control-l>", lambda e: self._clear_list())
         self.bind_all("<F1>", lambda e: self._show_about())
         
@@ -1352,12 +1352,12 @@ class TebeoSferaGUI(tk.Tk):
     
     def _handle_left_key(self, event):
         '''Handle left arrow key press for page navigation'''
-        if self.prev_page_button['state'] != tk.DISABLED:
+        if hasattr(self, 'prev_page_button') and self.prev_page_button['state'] != tk.DISABLED:
             self._show_prev_page()
     
     def _handle_right_key(self, event):
         '''Handle right arrow key press for page navigation'''
-        if self.next_page_button['state'] != tk.DISABLED:
+        if hasattr(self, 'next_page_button') and self.next_page_button['state'] != tk.DISABLED:
             self._show_next_page()
 
     def _search_current(self):
