@@ -51,55 +51,6 @@ DEFAULT_COLORS = {
 }
 
 
-class ToolTip(object):
-    '''Create a tooltip for a given widget'''
-    def __init__(self, widget, text='widget info'):
-        self.widget = widget
-        self.text = text
-        self.tipwindow = None
-        self.id = None
-        self.x = self.y = 0
-        widget.bind('<Enter>', self.enter)
-        widget.bind('<Leave>', self.leave)
-
-    def enter(self, event=None):
-        self.schedule()
-
-    def leave(self, event=None):
-        self.unschedule()
-        self.hidetip()
-
-    def schedule(self):
-        self.unschedule()
-        self.id = self.widget.after(800, self.showtip)
-
-    def unschedule(self):
-        id = self.id
-        self.id = None
-        if id:
-            self.widget.after_cancel(id)
-
-    def showtip(self, event=None):
-        if self.tipwindow or not self.text:
-            return
-        # Position tooltip near the widget (bottom-right)
-        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
-        self.tipwindow = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(True)
-        tw.wm_geometry("+%d+%d" % (x, y))
-        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
-                        background="#ffffe0", relief=tk.SOLID, borderwidth=1,
-                        font=("Arial", 9, "normal"), padx=8, pady=6)
-        label.pack(ipadx=1)
-
-    def hidetip(self):
-        tw = self.tipwindow
-        self.tipwindow = None
-        if tw:
-            tw.destroy()
-
-
 def build_series_url(series_key_or_path):
     """Build absolute URL for a series."""
     if not series_key_or_path:
@@ -175,6 +126,56 @@ except ImportError as e:
 
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
 SEARCH_PREVIEW_SIZE = (460, 690)
+
+
+class ToolTip(object):
+    '''Create a tooltip for a given widget'''
+    def __init__(self, widget, text='widget info'):
+        self.widget = widget
+        self.text = text
+        self.tipwindow = None
+        self.id = None
+        self.x = self.y = 0
+        widget.bind('<Enter>', self.enter)
+        widget.bind('<Leave>', self.leave)
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(800, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        if self.tipwindow or not self.text:
+            return
+        # Position tooltip near the widget (bottom-right)
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry("+%d+%d" % (x, y))
+        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                        background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                        font=("Arial", 9, "normal"), padx=8, pady=6)
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tipwindow
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
+
 
 try:
     from database.tebeosfera.tbdb import TebeoSferaDB
