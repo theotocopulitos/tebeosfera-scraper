@@ -702,7 +702,7 @@ class TebeoSferaGUI(tk.Tk):
 
         # Right panel - Preview and details (card styling)
         right_container = tk.Frame(top_paned, bg=self.colors['bg'])
-        top_paned.add(right_container, minsize=450)
+        top_paned.add(right_container, minsize=520)  # Increased to ensure action buttons don't get cut off
         
         right_frame = tk.Frame(right_container, bg=self.colors['card_bg'],
                               relief=tk.FLAT, bd=0)
@@ -848,15 +848,19 @@ class TebeoSferaGUI(tk.Tk):
         # ========== SECCIÓN 3: BOTONES DE ACCIÓN ==========
         button_frame = tk.Frame(right_frame, bg=self.colors['card_bg'])
         button_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
+        # Ensure buttons don't shrink below their natural size
+        button_frame.pack_propagate(False)
+        button_frame.config(height=50)
 
-        # Create styled action buttons
+        # Create styled action buttons with minimum width
         btn_search = tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", 
                               command=self._search_current,
                               bg=self.colors['primary'], fg='white',
                               font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
                               padx=10, pady=10, cursor='hand2',
-                              activebackground=self.colors['primary_hover'])
-        btn_search.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
+                              activebackground=self.colors['primary_hover'],
+                              wraplength=150)
+        btn_search.pack(side=tk.LEFT, padx=(0, 5), fill=tk.BOTH, expand=True)
         ToolTip(btn_search, "Buscar metadatos en tebeosfera.com")
         
         btn_generate = tk.Button(button_frame, text="💾 Generar ComicInfo.xml", 
@@ -864,8 +868,9 @@ class TebeoSferaGUI(tk.Tk):
                                 bg=self.colors['success'], fg='white',
                                 font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
                                 padx=10, pady=10, cursor='hand2',
-                                activebackground='#229954')
-        btn_generate.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+                                activebackground='#229954',
+                                wraplength=150)
+        btn_generate.pack(side=tk.LEFT, padx=5, fill=tk.BOTH, expand=True)
         ToolTip(btn_generate, "Generar e inyectar ComicInfo.xml en el archivo")
         
         btn_browser = tk.Button(button_frame, text="🌐 Abrir en navegador", 
@@ -873,8 +878,9 @@ class TebeoSferaGUI(tk.Tk):
                                bg=self.colors['warning'], fg='white',
                                font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
                                padx=10, pady=10, cursor='hand2',
-                               activebackground='#d68910')
-        btn_browser.pack(side=tk.LEFT, padx=(5, 0), fill=tk.X, expand=True)
+                               activebackground='#d68910',
+                               wraplength=150)
+        btn_browser.pack(side=tk.LEFT, padx=(5, 0), fill=tk.BOTH, expand=True)
         ToolTip(btn_browser, "Abrir página de TebeoSfera en el navegador")
         
         # Add hover effects to action buttons
