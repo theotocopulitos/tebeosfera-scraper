@@ -62,7 +62,9 @@ python tebeosfera_scraper.py inject "mi_comic.cbz" "leyendas_de_los_otori_2021_t
 ### Requisitos
 
 - Python 3.6+
-- PIL/Pillow (solo para GUI): `pip install pillow`
+- PIL/Pillow: `pip install pillow`
+- CustomTkinter (para GUI): `pip install customtkinter`
+- BeautifulSoup4: `pip install beautifulsoup4`
 
 ### Pasos
 
@@ -70,7 +72,7 @@ python tebeosfera_scraper.py inject "mi_comic.cbz" "leyendas_de_los_otori_2021_t
 git clone https://github.com/theotocopulitos/tebeosfera-scraper.git
 cd tebeosfera-scraper
 
-# Instalar dependencias (opcional, solo para GUI)
+# Instalar dependencias
 pip install -r requirements.txt
 
 # Ejecutar tests
