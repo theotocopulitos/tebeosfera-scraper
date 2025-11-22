@@ -1036,7 +1036,7 @@ class TebeoSferaParser(object):
                     if 'linea_resultados' not in tag_lower:
                         depth += 1
                 
-                search_pos = tag_pos + next_tag.end()
+                search_pos += next_tag.end()
             
             if end_pos is not None:
                 linea_content = search_region[:end_pos]
