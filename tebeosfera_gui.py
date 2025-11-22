@@ -786,7 +786,7 @@ class TebeoSferaGUI(tk.Tk):
         metadata_text_frame = tk.Frame(metadata_frame, bg=self.colors['card_bg'])
         metadata_text_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('Consolas', 'Monaco', 'Courier New', 'monospace', 9),
+        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('TkFixedFont', 9),
                                        bg='white', fg=self.colors['text_dark'],
                                        relief=tk.FLAT, bd=1,
                                        highlightthickness=1,
@@ -958,7 +958,7 @@ class TebeoSferaGUI(tk.Tk):
         
         self.log_text = tk.Text(log_text_frame, height=8, wrap=tk.WORD, 
                                 yscrollcommand=log_scrollbar.set,
-                                font=('Consolas', 'Monaco', 'Courier New', 'monospace', 9), bg='#fafafa',
+                                font=('TkFixedFont', 9), bg='#fafafa',
                                 fg=self.colors['text_dark'],
                                 relief=tk.FLAT, bd=1,
                                 highlightthickness=1,
@@ -1945,7 +1945,7 @@ class SearchDialog(tk.Toplevel):
         
         self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, 
                                         yscrollcommand=metadata_scrollbar.set,
-                                        font=('Consolas', 'Monaco', 'Courier New', 'monospace', 9), bg='white',
+                                        font=('TkFixedFont', 9), bg='white',
                                         fg=self.colors['text_dark'],
                                         relief=tk.FLAT, bd=1,
                                         highlightthickness=1,
