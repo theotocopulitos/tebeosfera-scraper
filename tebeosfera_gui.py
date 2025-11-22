@@ -30,6 +30,7 @@ TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
 
 # UI Constants
 MAX_FILENAME_LENGTH = 60  # Maximum characters for filename display in dialogs
+FOCUS_DELAY_MS = 100  # Delay in milliseconds before setting focus to input fields
 
 # Default color scheme for the application
 DEFAULT_COLORS = {
@@ -568,16 +569,16 @@ class TebeoSferaGUI(tk.Tk):
         
         # Bind keyboard shortcuts
         self.bind_all("<Control-o>", lambda e: self._open_files())
-        self.bind_all("<Control-O>", lambda e: self._open_directory())
+        self.bind_all("<Control-Shift-o>", lambda e: self._open_directory())
         self.bind_all("<Control-q>", lambda e: self._on_close())
         self.bind_all("<Control-p>", lambda e: self._process_selected())
-        self.bind_all("<Control-P>", lambda e: self._process_all())
+        self.bind_all("<Control-Shift-p>", lambda e: self._process_all())
         self.bind_all("<Control-l>", lambda e: self._clear_list())
         self.bind_all("<F1>", lambda e: self._show_about())
         
         # Arrow key navigation for page browsing
-        self.bind_all("<Left>", lambda e: self._show_prev_page() if self.prev_page_button['state'] != tk.DISABLED else None)
-        self.bind_all("<Right>", lambda e: self._show_next_page() if self.next_page_button['state'] != tk.DISABLED else None)
+        self.bind_all("<Left>", self._handle_left_key)
+        self.bind_all("<Right>", self._handle_right_key)
 
     def _create_toolbar(self):
         '''Create toolbar with quick actions'''
@@ -1348,6 +1349,16 @@ class TebeoSferaGUI(tk.Tk):
             return
         target = min(total - 1, comic.current_page_index + 1)
         self._display_comic_page(comic, target)
+    
+    def _handle_left_key(self, event):
+        '''Handle left arrow key press for page navigation'''
+        if self.prev_page_button['state'] != tk.DISABLED:
+            self._show_prev_page()
+    
+    def _handle_right_key(self, event):
+        '''Handle right arrow key press for page navigation'''
+        if self.next_page_button['state'] != tk.DISABLED:
+            self._show_next_page()
 
     def _search_current(self):
         '''Search tebeosfera for current comic'''
@@ -1773,7 +1784,7 @@ class SearchDialog(tk.Toplevel):
         self._auto_search()
         
         # Set focus to search entry after dialog is shown
-        self.after(100, lambda: self.search_entry.focus_set())
+        self.after(FOCUS_DELAY_MS, lambda: self.search_entry.focus_set())
 
     def _create_ui(self):
         '''Create search dialog UI with improved styling'''
