@@ -703,29 +703,23 @@ class TebeoSferaGUI(ctk.CTk):
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Right side: page navigation controls
-        nav_controls = tk.Frame(header, bg=self.colors['card_bg'])
+        nav_controls = ctk.CTkFrame(header, fg_color="transparent")
         nav_controls.pack(side=tk.RIGHT)
         
-        self.prev_page_button = tk.Button(nav_controls, text="◀",
+        self.prev_page_button = ctk.CTkButton(nav_controls, text="◀",
                                           command=self._show_prev_page, state=tk.DISABLED,
-                                          width=3, font=('Arial', 10, 'bold'),
-                                          bg=self.colors['secondary'], fg='white',
-                                          relief=tk.FLAT, bd=0, cursor='hand2',
-                                          activebackground=self.colors['text_light'])
+                                          width=40, height=32,
+                                          fg_color="gray50", hover_color="gray60")
         self.prev_page_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        self.page_info_label = tk.Label(nav_controls, text="0/0", 
-                                       font=('Arial', 9, 'bold'), width=8,
-                                       bg=self.colors['card_bg'],
-                                       fg=self.colors['text_dark'])
+        self.page_info_label = ctk.CTkLabel(nav_controls, text="0/0", 
+                                       width=60)
         self.page_info_label.pack(side=tk.LEFT, padx=5)
         
-        self.next_page_button = tk.Button(nav_controls, text="▶",
+        self.next_page_button = ctk.CTkButton(nav_controls, text="▶",
                                           command=self._show_next_page, state=tk.DISABLED,
-                                          width=3, font=('Arial', 10, 'bold'),
-                                          bg=self.colors['secondary'], fg='white',
-                                          relief=tk.FLAT, bd=0, cursor='hand2',
-                                          activebackground=self.colors['text_light'])
+                                          width=40, height=32,
+                                          fg_color="gray50", hover_color="gray60")
         self.next_page_button.pack(side=tk.LEFT, padx=(5, 0))
         
         tk.Frame(preview_section, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
@@ -779,18 +773,15 @@ class TebeoSferaGUI(ctk.CTk):
         toggle_frame = tk.Frame(metadata_header, bg=self.colors['card_bg'])
         toggle_frame.pack(side=tk.RIGHT)
         
-        self.metadata_pretty_button = tk.Button(toggle_frame, text="Bonito", 
+        self.metadata_pretty_button = ctk.CTkButton(toggle_frame, text="Bonito", 
                                                command=lambda: self._toggle_metadata_view("pretty"),
-                                               bg=self.colors['primary'], fg='white',
-                                               relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                               font=('Arial', 8, 'bold'), cursor='hand2')
+                                               width=60, height=24)
         self.metadata_pretty_button.pack(side=tk.LEFT, padx=(0, 3))
         
-        self.metadata_xml_button = tk.Button(toggle_frame, text="XML",
+        self.metadata_xml_button = ctk.CTkButton(toggle_frame, text="XML",
                                             command=lambda: self._toggle_metadata_view("xml"),
-                                            bg=self.colors['secondary'], fg='white',
-                                            relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                            font=('Arial', 8, 'bold'), cursor='hand2')
+                                            width=50, height=24,
+                                            fg_color="gray50", hover_color="gray60")
         self.metadata_xml_button.pack(side=tk.LEFT)
         
         # Metadata text with better styling
@@ -814,50 +805,32 @@ class TebeoSferaGUI(ctk.CTk):
         self.current_metadata_dict = None
 
         # ========== SECCIÓN 3: BOTONES DE ACCIÓN ==========
-        button_frame = tk.Frame(right_frame, bg=self.colors['card_bg'])
+        button_frame = ctk.CTkFrame(right_frame, fg_color="transparent")
         button_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
         # Ensure buttons don't shrink below their natural size
         button_frame.pack_propagate(False)
         button_frame.config(height=50)
 
         # Create styled action buttons with minimum width
-        btn_search = tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", 
+        btn_search = ctk.CTkButton(button_frame, text="🔍 Buscar en TebeoSfera", 
                               command=self._search_current,
-                              bg=self.colors['primary'], fg='white',
-                              font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                              padx=10, pady=10, cursor='hand2',
-                              activebackground=self.colors['primary_hover'],
-                              wraplength=150)
+                              height=40)
         btn_search.pack(side=tk.LEFT, padx=(0, 5), fill=tk.BOTH, expand=True)
         ToolTip(btn_search, "Buscar metadatos en tebeosfera.com")
         
-        btn_generate = tk.Button(button_frame, text="💾 Generar ComicInfo.xml", 
+        btn_generate = ctk.CTkButton(button_frame, text="💾 Generar ComicInfo.xml", 
                                 command=self._generate_xml_current,
-                                bg=self.colors['success'], fg='white',
-                                font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                                padx=10, pady=10, cursor='hand2',
-                                activebackground='#229954',
-                                wraplength=150)
+                                fg_color="green", hover_color="darkgreen",
+                                height=40)
         btn_generate.pack(side=tk.LEFT, padx=5, fill=tk.BOTH, expand=True)
         ToolTip(btn_generate, "Generar e inyectar ComicInfo.xml en el archivo")
         
-        btn_browser = tk.Button(button_frame, text="🌐 Abrir en navegador", 
+        btn_browser = ctk.CTkButton(button_frame, text="🌐 Abrir en navegador", 
                                command=self._open_current_in_browser,
-                               bg=self.colors['warning'], fg='white',
-                               font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                               padx=10, pady=10, cursor='hand2',
-                               activebackground='#d68910',
-                               wraplength=150)
+                               fg_color="orange", hover_color="darkorange",
+                               height=40)
         btn_browser.pack(side=tk.LEFT, padx=(5, 0), fill=tk.BOTH, expand=True)
         ToolTip(btn_browser, "Abrir página de TebeoSfera en el navegador")
-        
-        # Add hover effects to action buttons
-        for btn, hover_color in [(btn_search, self.colors['primary_hover']),
-                                 (btn_generate, self.colors['success_hover']),
-                                 (btn_browser, self.colors['warning_hover'])]:
-            original_color = btn['bg']
-            btn.bind('<Enter>', lambda e, b=btn, c=hover_color: b.config(bg=c))
-            btn.bind('<Leave>', lambda e, b=btn, c=original_color: b.config(bg=c))
         
         # ========== PANEL INFERIOR: DETALLES + LOG (horizontal) ==========
         bottom_panel = tk.Frame(paned, bg=self.colors['bg'])
@@ -897,17 +870,15 @@ class TebeoSferaGUI(ctk.CTk):
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Log action buttons
-        btn_frame = tk.Frame(log_header, bg=self.colors['card_bg'])
+        btn_frame = ctk.CTkFrame(log_header, fg_color="transparent")
         btn_frame.pack(side=tk.RIGHT)
         
-        tk.Button(btn_frame, text="💾 Guardar", command=self._save_log,
-                 bg=self.colors['secondary'], fg='white',
-                 font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
-                 padx=8, pady=3, cursor='hand2').pack(side=tk.RIGHT, padx=(5, 0))
-        tk.Button(btn_frame, text="🗑️ Limpiar", command=self._clear_log,
-                 bg=self.colors['danger'], fg='white',
-                 font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
-                 padx=8, pady=3, cursor='hand2').pack(side=tk.RIGHT)
+        ctk.CTkButton(btn_frame, text="💾 Guardar", command=self._save_log,
+                 width=80, height=24,
+                 fg_color="gray50", hover_color="gray60").pack(side=tk.RIGHT, padx=(5, 0))
+        ctk.CTkButton(btn_frame, text="🗑️ Limpiar", command=self._clear_log,
+                 width=80, height=24,
+                 fg_color="red", hover_color="darkred").pack(side=tk.RIGHT)
         
         tk.Frame(log_card, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
         
@@ -1100,13 +1071,13 @@ class TebeoSferaGUI(ctk.CTk):
         '''Toggle between XML and Pretty view'''
         self.metadata_view_mode.set(mode)
         
-        # Update button styles with new color scheme
+        # Update button styles for customtkinter
         if mode == "xml":
-            self.metadata_xml_button.config(bg=self.colors['primary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['secondary'], fg='white')
+            self.metadata_xml_button.configure(fg_color=("gray75", "#3B8ED0"))  # CTk default blue
+            self.metadata_pretty_button.configure(fg_color="gray50")
         else:
-            self.metadata_xml_button.config(bg=self.colors['secondary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['primary'], fg='white')
+            self.metadata_xml_button.configure(fg_color="gray50")
+            self.metadata_pretty_button.configure(fg_color=("gray75", "#3B8ED0"))
         
         self._render_metadata_view()
     
