@@ -148,37 +148,115 @@ class TebeoSferaConnection(object):
         query_encoded = query.replace(' ', '_')
         query_encoded = urllib.parse.quote(query_encoded, safe='_')
 
-        # Build search URL (initial page)
+        # Build search URL (for reference, though we'll use AJAX calls)
         search_url = "/buscador/{0}/".format(query_encoded)
         
-        # Get initial page which may contain collections and sagas directly
-        initial_html = self.get_page(search_url)
-        if not initial_html:
-            return None
-        
         from utils_compat import log
-        log.debug("Initial page returned {0} bytes".format(len(initial_html)))
         
-        # The page may have collections and sagas embedded directly in the initial HTML,
-        # while numbers are loaded via AJAX. Let's use the initial HTML as a starting point.
-        # Collect all results
+        # All search results are loaded via AJAX calls, not in the initial page
+        # We need to make separate AJAX calls for each type of result
         all_results_html = []
         
-        # Add the initial HTML which may contain collections and sagas
-        # The initial HTML should have the structure we need
-        if initial_html and initial_html.strip():
-            all_results_html.append(initial_html)
-        
-        # Search in numbers (issues)
+        # Search in series/collections (T3_series table)
         try:
-            numbers_data = urllib.parse.urlencode({
-                'action': 'buscador_simple_numeros',
-                'busqueda': original_query,
-                'reg_ini': '0',
-                'rpp': '100'  # Results per page
+            series_data = urllib.parse.urlencode({
+                'tabla': 'T3_series',
+                'busqueda': original_query
             }).encode('utf-8')
             
-            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
+            series_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            request = urllib.request.Request(series_url, data=series_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            series_html = response.read()
+            
+            # Check if response is gzipped
+            if series_html.startswith(b'\x1f\x8b'):  # gzip magic number
+                series_html = gzip.decompress(series_html)
+            
+            # Decode response
+            charset = self._get_charset(response)
+            if charset:
+                series_html = series_html.decode(charset)
+            else:
+                try:
+                    series_html = series_html.decode('utf-8')
+                except:
+                    series_html = series_html.decode('latin-1')
+            
+            if series_html and series_html.strip() and not series_html.startswith('Error'):
+                # Add section header for series/collections
+                series_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + series_html
+                all_results_html.append(series_with_header)
+                log.debug("Series/Collections AJAX returned {0} bytes".format(len(series_html)))
+            else:
+                if not series_html:
+                    log.debug("Series/Collections AJAX returned empty response")
+                elif not series_html.strip():
+                    log.debug("Series/Collections AJAX returned whitespace-only response ({0} bytes)".format(len(series_html)))
+                elif series_html.startswith('Error'):
+                    log.debug("Series/Collections AJAX returned error: {0}".format(series_html[:200]))
+        except Exception as e:
+            log.debug("Error fetching series/collections via AJAX: {0}".format(sstr(e)))
+        
+        # Search in sagas (T3_sagas table)
+        try:
+            sagas_data = urllib.parse.urlencode({
+                'tabla': 'T3_sagas',
+                'busqueda': original_query
+            }).encode('utf-8')
+            
+            sagas_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            request = urllib.request.Request(sagas_url, data=sagas_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            sagas_html = response.read()
+            
+            # Check if response is gzipped
+            if sagas_html.startswith(b'\x1f\x8b'):  # gzip magic number
+                sagas_html = gzip.decompress(sagas_html)
+            
+            # Decode response
+            charset = self._get_charset(response)
+            if charset:
+                sagas_html = sagas_html.decode(charset)
+            else:
+                try:
+                    sagas_html = sagas_html.decode('utf-8')
+                except:
+                    sagas_html = sagas_html.decode('latin-1')
+            
+            if sagas_html and sagas_html.strip() and not sagas_html.startswith('Error'):
+                # Add section header for sagas
+                sagas_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Sagas</div>\n' + sagas_html
+                all_results_html.append(sagas_with_header)
+                log.debug("Sagas AJAX returned {0} bytes".format(len(sagas_html)))
+            else:
+                if not sagas_html:
+                    log.debug("Sagas AJAX returned empty response")
+                elif not sagas_html.strip():
+                    log.debug("Sagas AJAX returned whitespace-only response ({0} bytes)".format(len(sagas_html)))
+                elif sagas_html.startswith('Error'):
+                    log.debug("Sagas AJAX returned error: {0}".format(sagas_html[:200]))
+        except Exception as e:
+            log.debug("Error fetching sagas via AJAX: {0}".format(sstr(e)))
+        
+        # Search in numbers (issues) using T3_numeros table
+        try:
+            numbers_data = urllib.parse.urlencode({
+                'tabla': 'T3_numeros',
+                'busqueda': original_query
+            }).encode('utf-8')
+            
+            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
             request = urllib.request.Request(numbers_url, data=numbers_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
