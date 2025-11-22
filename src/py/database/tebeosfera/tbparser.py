@@ -755,16 +755,16 @@ class TebeoSferaParser(object):
             direct_results = []
             
             # Debug: Check if HTML contains the paths we're looking for
-            has_series_path = '/series/' in html_content
+            has_colecciones_path = '/colecciones/' in html_content
             has_sagas_path = '/sagas/' in html_content
-            series_count = html_content.count('/series/')
+            colecciones_count = html_content.count('/colecciones/')
             sagas_count = html_content.count('/sagas/')
-            log.debug("HTML contains paths: /series/={0} (count={1}), /sagas/={2} (count={3})".format(
-                has_series_path, series_count, has_sagas_path, sagas_count))
+            log.debug("HTML contains paths: /colecciones/={0} (count={1}), /sagas/={2} (count={3})".format(
+                has_colecciones_path, colecciones_count, has_sagas_path, sagas_count))
             
             # Find all collection/series links (only if we don't have collections yet)
             if not has_collections:
-                collection_pattern = r'<a[^>]*href="(/series/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
+                collection_pattern = r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
                 for match in re.finditer(collection_pattern, html_content, re.IGNORECASE):
                     url = match.group(1)
                     slug = match.group(2)
@@ -1066,7 +1066,7 @@ class TebeoSferaParser(object):
             if section_type == 'saga':
                 url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>')
             elif section_type == 'collection':
-                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/series/([^"]+)\.html)"[^>]*>')
+                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>')
             else:  # issue
                 url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>')
             
@@ -1075,7 +1075,7 @@ class TebeoSferaParser(object):
                 # Try all types
                 for pattern in [
                     r'<a[^>]*href="(/(?:sagas)/([^"]+)\.html)"[^>]*>',
-                    r'<a[^>]*href="(/(?:series)/([^"]+)\.html)"[^>]*>',
+                    r'<a[^>]*href="(/(?:colecciones)/([^"]+)\.html)"[^>]*>',
                     r'<a[^>]*href="(/(?:numeros)/([^"]+)\.html)"[^>]*>'
                 ]:
                     url, slug, title = self._find_link_with_text(linea_content, pattern)
