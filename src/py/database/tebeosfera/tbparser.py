@@ -2,14 +2,14 @@
 HTML Parser Module for Tebeosfera.com
 
 Parses HTML pages from tebeosfera.com to extract comic book metadata.
-Uses BeautifulSoup-like approach with basic HTML parsing.
+Uses BeautifulSoup4 for robust HTML parsing.
 
 @author: Comic Scraper Enhancement Project
 '''
 
 import re
-from html.parser import HTMLParser
 from html.entities import name2codepoint
+from bs4 import BeautifulSoup
 from utils_compat import sstr
 
 
@@ -50,6 +50,9 @@ class TebeoSferaParser(object):
         '''
         if not html_content:
             return None
+
+        # Parse HTML with BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
 
         metadata = {
             # Basic info
@@ -126,393 +129,119 @@ class TebeoSferaParser(object):
         }
 
         # Extract title (in div with id="titulo_ficha")
-        title_match = re.search(
-            r'<div id="titulo_ficha"[^>]*>.*?<div class="titulo">.*?'
-            r'<span[^>]*>(.*?)</span><br>(.*?)</div>',
-            html_content, re.DOTALL | re.IGNORECASE
-        )
-        if title_match:
-            series_title = self._clean_text(title_match.group(1))
-            issue_title = self._clean_text(title_match.group(2))
-            metadata['series'] = series_title
-            metadata['title'] = issue_title
+        titulo_ficha = soup.find('div', id='titulo_ficha')
+        if titulo_ficha:
+            titulo_div = titulo_ficha.find('div', class_='titulo')
+            if titulo_div:
+                # Try to extract series and issue title separately
+                span = titulo_div.find('span')
+                if span:
+                    series_title = self._clean_text(span.get_text())
+                    # Get text after the span and <br> tag
+                    remaining_text = []
+                    for content in titulo_div.children:
+                        if content == span or (hasattr(content, 'name') and content.name == 'br'):
+                            continue
+                        if hasattr(content, 'get_text'):
+                            remaining_text.append(content.get_text())
+                        elif isinstance(content, str):
+                            remaining_text.append(content)
+                    issue_title = self._clean_text(''.join(remaining_text))
+                    metadata['series'] = series_title
+                    metadata['title'] = issue_title
+                else:
+                    # Fallback: use entire text
+                    full_title = self._clean_text(titulo_div.get_text())
+                    metadata['title'] = full_title
         else:
             # Fallback: try simpler pattern
-            title_match = re.search(
-                r'<div class="titulo">(.*?)</div>',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            if title_match:
-                full_title = self._clean_text(title_match.group(1))
+            titulo_div = soup.find('div', class_='titulo')
+            if titulo_div:
+                full_title = self._clean_text(titulo_div.get_text())
                 metadata['title'] = full_title
 
         # Extract issue number and collection info
-        number_match = re.search(
-            r'<strong><span[^>]*>Nº</span></strong>\s*(\d+)\s*<strong>de</strong>.*?'
-            r'<a href="(/colecciones/[^"]+)"[^>]*>([^<]+)</a>.*?'
-            r'\[de (\d+)\]',
-            html_content, re.DOTALL | re.IGNORECASE
-        )
-        if number_match:
-            metadata['number'] = number_match.group(1)
-            metadata['collection_url'] = number_match.group(2)
-            metadata['series'] = self._clean_text(number_match.group(3))
-            metadata['count'] = int(number_match.group(4))
+        # Look for pattern: "Nº X de <link>SERIES</link> [de Y]"
+        for strong in soup.find_all('strong'):
+            text = strong.get_text().strip()
+            if 'Nº' in text or 'N°' in text:
+                # Navigate to find number and collection
+                parent = strong.parent
+                if parent:
+                    parent_text = parent.get_text()
+                    # Extract number
+                    num_match = re.search(r'Nº\s*(\d+)', parent_text, re.IGNORECASE)
+                    if num_match:
+                        metadata['number'] = num_match.group(1)
+                    
+                    # Extract collection link
+                    coll_link = parent.find('a', href=re.compile(r'/colecciones/'))
+                    if coll_link:
+                        metadata['collection_url'] = coll_link.get('href', '')
+                        metadata['series'] = self._clean_text(coll_link.get_text())
+                    
+                    # Extract count
+                    count_match = re.search(r'\[de\s+(\d+)\]', parent_text)
+                    if count_match:
+                        metadata['count'] = int(count_match.group(1))
+                break
 
         # Extract publisher, location, and country
-        publisher_match = re.search(
-            r'<a href="/entidades/[^"]+"\s*>([^<]+)</a>\s*<strong>\s*·\s*</strong>\s*'
-            r'<span[^>]*>([^<]*)</span>\s*<strong>\s*·\s*</strong>\s*'
-            r'<img[^>]*alt="([^"]+)"',
-            html_content, re.IGNORECASE
-        )
-        if publisher_match:
-            metadata['publisher'] = self._clean_text(publisher_match.group(1))
-            metadata['publisher_location'] = self._clean_text(publisher_match.group(2))
-            metadata['publisher_country'] = self._clean_text(publisher_match.group(3))
+        # Look for pattern: <a>PUBLISHER</a> · <span>LOCATION</span> · <img alt="COUNTRY">
+        publisher_links = soup.find_all('a', href=re.compile(r'/entidades/'))
+        for link in publisher_links:
+            publisher_text = self._clean_text(link.get_text())
+            if publisher_text:
+                metadata['publisher'] = publisher_text
+                # Look for siblings
+                next_sibling = link.next_sibling
+                while next_sibling:
+                    if hasattr(next_sibling, 'name'):
+                        if next_sibling.name == 'span':
+                            location_text = self._clean_text(next_sibling.get_text())
+                            if location_text:
+                                metadata['publisher_location'] = location_text
+                        elif next_sibling.name == 'img':
+                            country_alt = next_sibling.get('alt', '')
+                            if country_alt:
+                                metadata['publisher_country'] = self._clean_text(country_alt)
+                                break
+                    next_sibling = next_sibling.next_sibling
+                break
 
-        # Extract all row-fluid dato fields using a more robust approach
-        self._extract_field_rows(html_content, metadata)
+        # Extract all row-fluid dato fields using BeautifulSoup
+        self._extract_field_rows_bs(soup, metadata)
 
-        # Extract authors section
-        self._extract_authors(html_content, metadata)
+        # Extract authors section using BeautifulSoup
+        self._extract_authors_bs(soup, metadata)
 
-        # Extract genres
-        genres_match = re.search(
-            r'<div class="tab-pane active" id="tab1"><p>(.*?)</p></div>',
-            html_content, re.DOTALL | re.IGNORECASE
-        )
-        if genres_match:
-            genres_html = genres_match.group(1)
-            genres = re.findall(r'<a[^>]*>([^<]+)</a>', genres_html)
-            metadata['genres'] = [self._clean_text(g) for g in genres]
+        # Extract genres using BeautifulSoup
+        genres_tab = soup.find('div', class_='tab-pane active', id='tab1')
+        if genres_tab:
+            genre_links = genres_tab.find_all('a')
+            metadata['genres'] = [self._clean_text(link.get_text()) for link in genre_links if link.get_text().strip()]
         
-        # Extract promotional description / synopsis (multiple patterns)
-        # Pattern 0: "Comentario de la editorial:" - very specific and reliable
-        # This usually contains the actual synopsis/plot description
-        # Also capture relevant technical info (pages, translation) that comes before it
-        comentario_match = re.search(r'Comentario\s+de\s+la\s+editorial:', html_content, re.IGNORECASE)
-        if comentario_match:
-            comentario_start = comentario_match.start()
-            
-            # Look backwards to find relevant technical info (pages, translation, etc.)
-            # Search for paragraphs before "Comentario" that contain book info but not paper/printing info
-            before_text = html_content[max(0, comentario_start - 2000):comentario_start]
-            before_paras = re.findall(r'<p[^>]*>(.*?)</p>', before_text, re.DOTALL | re.IGNORECASE)
-            
-            relevant_before = []
-            skip_after_keywords = ['papel', 'bosques', 'gestionados', 'sostenible', 'impreso', 'italia', 'spa', 'leg']
-            good_before_keywords = ['páginas', 'traducción', 'encuadernado', 'tapa', 'cartoné', 'editorial', 'rotulación', 'editor']
-            
-            for para in reversed(before_paras):  # Start from closest to comentario
-                text = self._clean_text(self._strip_tags(para))
-                if text and len(text) > 30:
-                    text_lower = text.lower()
-                    # Skip if it's about paper/printing (comes after comentario)
-                    if any(skip in text_lower for skip in skip_after_keywords):
-                        break  # Stop looking backwards if we hit paper info
-                    # Include if it has book info keywords
-                    if any(good in text_lower for good in good_before_keywords):
-                        relevant_before.insert(0, text)  # Add at beginning to maintain order
-                        if len(relevant_before) >= 3:  # Limit to 3 paragraphs max
-                            break
-            
-            # Now capture content after "Comentario de la editorial:"
-            start_pos = comentario_match.end()
-            # Find the end: look for common delimiters
-            end_markers = [
-                (r'<div[^>]*class="[^"]*tebeoafines', 'tebeoafines div'),
-                (r'TEBEOAFINES', 'TEBEOAFINES text'),
-                (r'<div[^>]*class="[^"]*(?:row|tab|datos)', 'row/tab div'),
-                (r'<h[234]', 'heading tag'),
-                (r'</body>', 'body end'),
-            ]
-            
-            # Find the earliest end marker
-            end_pos = len(html_content)
-            found_marker = None
-            for marker_pattern, marker_name in end_markers:
-                end_match = re.search(marker_pattern, html_content[start_pos:], re.IGNORECASE)
-                if end_match:
-                    candidate_end = start_pos + end_match.start()
-                    if candidate_end < end_pos:
-                        end_pos = candidate_end
-                        found_marker = marker_name
-            
-            # Extract the content after comentario
-            if end_pos > start_pos:
-                content = html_content[start_pos:end_pos]
-                synopsis_after = self._strip_tags(content)
-                cleaned_after = self._clean_text_preserve_newlines(synopsis_after)
-                
-                # Combine: technical info + "Comentario de la editorial:" + synopsis
-                all_parts = relevant_before + [cleaned_after] if cleaned_after else relevant_before
-                combined = '\n\n'.join(all_parts)
-                
-                # Only use if it's substantial text (> 100 chars)
-                if combined and len(combined) > 100:
-                    metadata['synopsis'] = combined
-        
-        # Pattern 1: "Información de la editorial:" section - capture ALL content including promo
-        # This is the most complete source, capturing everything from the description to the end
-        
-        # Find the start position of "Información de la editorial:" (try multiple formats)
-        if not metadata.get('synopsis'):
-            # Try different formats
-            info_patterns = [
-                (r'Información\s+de\s+la\s+editorial:', 'standard'),
-                (r'<strong>Información\s+de\s+la\s+editorial:</strong>', 'strong tag'),
-                (r'<h[234][^>]*>Información\s+de\s+la\s+editorial:', 'heading'),
-            ]
-            info_start = None
-            pattern_used = None
-            for pattern, pattern_name in info_patterns:
-                match = re.search(pattern, html_content, re.IGNORECASE)
-                if match:
-                    info_start = match
-                    pattern_used = pattern_name
-                    break
-            
-            if info_start:
-                start_pos = info_start.end()
-                
-                # Find the end: look for common delimiters
-                end_markers = [
-                    (r'<div[^>]*class="[^"]*tebeoafines', 'tebeoafines div'),
-                    (r'TEBEOAFINES', 'TEBEOAFINES text'),
-                    (r'Muestras', 'Muestras'),
-                    (r'<h[234]', 'heading tag'),
-                    (r'</body>', 'body end'),
-                ]
-                
-                # Find the earliest end marker
-                end_pos = len(html_content)
-                found_marker = None
-                for marker_pattern, marker_name in end_markers:
-                    end_match = re.search(marker_pattern, html_content[start_pos:], re.IGNORECASE)
-                    if end_match:
-                        candidate_end = start_pos + end_match.start()
-                        if candidate_end < end_pos:
-                            end_pos = candidate_end
-                            found_marker = marker_name
-                
-                # Extract the content
-                if end_pos > start_pos:
-                    content = html_content[start_pos:end_pos]
-                    synopsis = self._strip_tags(content)
-                    cleaned = self._clean_text_preserve_newlines(synopsis)
-                    # Only use if it's substantial text (> 100 chars)
-                    if cleaned and len(cleaned) > 100:
-                        metadata['synopsis'] = cleaned
-        
-        # Pattern 1.5: Look for long paragraphs that combine technical info + synopsis
-        # These often start with book details but contain the actual synopsis
-        if not metadata.get('synopsis'):
-            paragraphs = re.findall(
-                r'<p[^>]*>(.*?)</p>',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            
-            for para in paragraphs:
-                text = self._clean_text_preserve_newlines(self._strip_tags(para))
-                if text and len(text) > 200:  # Must be long (likely combined)
-                    text_lower = text.lower()
-                    
-                    # Check if it has technical info at the start
-                    has_tech_start = any(tech in text_lower[:200] for tech in ['libro', 'encuadernado', 'páginas', 'traducción', 'original'])
-                    
-                    # Check if it has narrative content (quotes, narrative keywords)
-                    has_quotes = '"' in text or '&ldquo;' in text or '&rdquo;' in text
-                    narrative_keywords = ['muerte', 'vida', 'dios', 'personaje', 'descubrir', 'mundo', 'enfermedad', 'herencia', 'monasterio']
-                    has_narrative = any(keyword in text_lower for keyword in narrative_keywords) or has_quotes
-                    
-                    if has_tech_start and has_narrative:
-                        # This is likely a combined paragraph - use it!
-                        metadata['synopsis'] = text
-                        break
-        
-        # Pattern 2: "Promoción editorial:" - capture until next section or end
-        if not metadata.get('synopsis'):
-            promo_patterns = [
-                (r'<strong>Promoción editorial:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos|tebeoafines)|Muestras|$)', 'strong tag'),
-                (r'Promoción\s+editorial:\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos)|$)', 'text only'),
-            ]
-            for pattern, pattern_name in promo_patterns:
-                promo_match = re.search(pattern, html_content, re.DOTALL | re.IGNORECASE)
-                if promo_match:
-                    synopsis = self._strip_tags(promo_match.group(1))
-                    cleaned = self._clean_text_preserve_newlines(synopsis)
-                    if cleaned and len(cleaned) > 50:
-                        metadata['synopsis'] = cleaned
-                        break
-        
-        # Pattern 3: "Argumento:" label - capture until next section
-        if not metadata.get('synopsis'):
-            arg_match = re.search(
-                r'<strong>Argumento:</strong>\s*</p>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:row|tab|datos))',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            if arg_match:
-                synopsis = self._strip_tags(arg_match.group(1))
-                cleaned = self._clean_text_preserve_newlines(synopsis)
-                if cleaned and len(cleaned) > 50:
-                    metadata['synopsis'] = cleaned
-        
-        # Pattern 4: Text in <p class="texto"> (main description) - capture ALL paragraphs
-        if not metadata.get('synopsis'):
-            # First, find the container that holds the description paragraphs
-            # Look for a div or section that contains multiple <p class="texto"> tags
-            texto_container = re.search(
-                r'(<div[^>]*>.*?<p class="texto"[^>]*>.*?</p>(?:.*?<p[^>]*>.*?</p>)*)',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            if texto_container:
-                # Extract all paragraphs from this container
-                paragraphs = re.findall(
-                    r'<p[^>]*>(.*?)</p>',
-                    texto_container.group(1), re.DOTALL | re.IGNORECASE
-                )
-                all_text = []
-                for para in paragraphs:
-                    text = self._clean_text_preserve_newlines(self._strip_tags(para))
-                    if text and len(text) > 10:  # Skip very short paragraphs
-                        all_text.append(text)
-                
-                if all_text:
-                    combined = '\n\n'.join(all_text)
-                    if len(combined) > 50:
-                        metadata['synopsis'] = combined
-            else:
-                # Fallback: single <p class="texto">
-                desc_match = re.search(
-                    r'<p class="texto"[^>]*>(.*?)</p>',
-                    html_content, re.DOTALL | re.IGNORECASE
-                )
-                if desc_match:
-                    description = self._strip_tags(desc_match.group(1))
-                    cleaned_desc = self._clean_text_preserve_newlines(description)
-                    if cleaned_desc and len(cleaned_desc) > 20:
-                        metadata['synopsis'] = cleaned_desc
-        
-        # Pattern 5: Look for description section - capture everything between title and next major section
-        if not metadata.get('synopsis'):
-            # Look for a section that contains substantial descriptive text
-            # Common patterns: after "Información" or before "Datos técnicos"
-            desc_section = re.search(
-                r'(?:Información|Descripción|Argumento)[^<]*:.*?<p[^>]*>(.*?)(?:<h[234]|<div[^>]*class="[^"]*(?:datos|tab|row|tebeoafines)|</body>)',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            if desc_section:
-                # Extract all paragraphs from this section
-                section_content = desc_section.group(1)
-                paragraphs = re.findall(
-                    r'<p[^>]*>(.*?)</p>',
-                    section_content, re.DOTALL | re.IGNORECASE
-                )
-                all_text = []
-                for para in paragraphs:
-                    text = self._clean_text_preserve_newlines(self._strip_tags(para))
-                    # Skip metadata-like content
-                    if text and len(text) > 20 and not any(skip in text.lower() for skip in ['isbn', 'depósito', 'precio', 'páginas', 'formato', 'tamaño']):
-                        all_text.append(text)
-                
-                if all_text:
-                    combined = '\n\n'.join(all_text)
-                    if len(combined) > 50:
-                        metadata['synopsis'] = combined
-        
-        # Pattern 6: Fallback - find the LONGEST substantial paragraph (not just the first)
-        if not metadata.get('synopsis'):
-            paragraphs = re.findall(
-                r'<p[^>]*>(.*?)</p>',
-                html_content, re.DOTALL | re.IGNORECASE
-            )
-            best_para = None
-            best_score = 0
-            # Keywords that indicate technical/metadata content (should be skipped)
-            skip_keywords = [
-                'isbn', 'depósito', 'precio', 'páginas', 'formato', 'tamaño', 'color', 'lengua', 
-                'traducción', 'original', 'papel', 'bosques', 'gestionados', 'sostenible', 'impreso',
-                'encuadernado', 'tapa', 'semirígida', 'cartoné', 'ediciones', 'editorial', 'traducción',
-                'rotulación', 'editor', 'italia', 'spa', 'leg', 'proveniente'
-            ]
-            # Keywords that indicate a good synopsis (narrative content)
-            good_keywords = [
-                'historia', 'colección', 'descubrir', 'personajes', 'aventura', 'argumento', 'sinopsis', 
-                'narra', 'cuenta', 'viaje', 'embarcan', 'misterioso', 'personaje', 'recorrido', 'gesta',
-                'iniciático', 'místico', 'pintados', 'colores', 'inspirad', 'ruedan', 'carreteras',
-                'autoestopista', 'veterano', 'silla', 'ruedas', 'mago', 'piernas', 'accidente', 'helicóptero',
-                'muerte', 'dios', 'vida', 'soledad', 'silencio', 'monasterio', 'herencia', 'parís', 'mundo',
-                'cuestion', 'reencontr', 'enfermedad', 'incurable', 'confront', 'preguntas', 'elecciones',
-                'cartujana', 'william', 'méry', 'abandonar', 'descubrirá', 'forjadas', 'antigua'
-            ]
-            
-            for para in paragraphs:
-                text = self._clean_text_preserve_newlines(self._strip_tags(para))
-                # Look for substantial paragraphs (> 50 chars, not just metadata)
-                if text and len(text) > 50:
-                    text_lower = text.lower()
-                    
-                    # Count technical keywords (metadata)
-                    skip_count = sum(1 for skip in skip_keywords if skip in text_lower)
-                    
-                    # Count good keywords (narrative content)
-                    good_count = sum(1 for keyword in good_keywords if keyword in text_lower)
-                    
-                    # Check for quotes (citations) - often indicate synopsis
-                    has_quotes = '"' in text or '&ldquo;' in text or '&rdquo;' in text or "'" in text
-                    if has_quotes:
-                        good_count += 2  # Quotes are a strong indicator of synopsis
-                    
-                    # IMPORTANT: If paragraph has BOTH technical AND narrative keywords,
-                    # it's likely a combined paragraph (technical info + synopsis) - DON'T skip it!
-                    # Only skip if it has technical keywords BUT NO narrative keywords AND no quotes
-                    if skip_count >= 2 and good_count == 0 and not has_quotes:
-                        # Pure technical/metadata paragraph - skip it
-                        continue
-                    
-                    # Score: length + strong bonus for narrative keywords and quotes
-                    # If it has narrative keywords or quotes, it's valuable even if it has some technical info
-                    score = len(text)
-                    if good_count > 0 or has_quotes:
-                        score += 500 * good_count  # Very strong bonus for narrative keywords
-                        if has_quotes:
-                            score += 300  # Bonus for quotes
-                        # If it has narrative content, reduce penalty for technical keywords
-                        if skip_count > 0:
-                            score -= 50 * skip_count  # Small penalty (it's a combined paragraph)
-                    else:
-                        # No narrative keywords or quotes - apply full penalty for technical keywords
-                        if skip_count > 0:
-                            score -= 150 * skip_count  # Stronger penalty
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_para = text
-            
-            if best_para:
-                metadata['synopsis'] = best_para
+        # Extract synopsis using BeautifulSoup
+        self._extract_synopsis_bs(soup, metadata)
 
         # Extract cover image (the first/main one)
-        cover_match = re.search(
-            r'<img id="img_principal"\s+src="([^"]+)"',
-            html_content, re.IGNORECASE
-        )
-        if cover_match:
-            cover_url = cover_match.group(1)
+        cover_img = soup.find('img', id='img_principal')
+        if cover_img:
+            cover_url = cover_img.get('src', '')
             # Ensure it's a full URL
-            if not cover_url.startswith('http'):
+            if cover_url and not cover_url.startswith('http'):
                 cover_url = 'https://www.tebeosfera.com' + cover_url
-            metadata['cover_image_url'] = cover_url
-            metadata['image_urls'].append(cover_url)
+            if cover_url:
+                metadata['cover_image_url'] = cover_url
+                metadata['image_urls'].append(cover_url)
 
         # Extract all additional images from the page
-        all_images_pattern = r'<img[^>]*src="([^"]*T3_numeros[^"]*)"[^>]*>'
-        for img_match in re.finditer(all_images_pattern, html_content, re.IGNORECASE):
-            img_url = img_match.group(1)
-            if not img_url.startswith('http'):
+        all_images = soup.find_all('img', src=re.compile(r'T3_numeros'))
+        for img in all_images:
+            img_url = img.get('src', '')
+            if img_url and not img_url.startswith('http'):
                 img_url = 'https://www.tebeosfera.com' + img_url
-            if img_url not in metadata['image_urls']:
+            if img_url and img_url not in metadata['image_urls']:
                 metadata['image_urls'].append(img_url)
 
         # Parse dates from the date field
@@ -531,69 +260,80 @@ class TebeoSferaParser(object):
 
         return metadata
 
-    def _extract_field_rows(self, html_content, metadata):
+    def _extract_field_rows_bs(self, soup, metadata):
         '''
-        Extract data from row-fluid sections with etiqueta/dato structure.
+        Extract data from row-fluid sections with etiqueta/dato structure using BeautifulSoup.
 
-        html_content: HTML string
+        soup: BeautifulSoup object
         metadata: Dictionary to update with extracted data
         '''
         # Find all row-fluid sections with etiqueta and dato
-        pattern = r'<div class="row-fluid">.*?' \
-                  r'<div class="span3 etiqueta[^"]*">([^<]+)</div>.*?' \
-                  r'<div class="span9 dato">(.*?)</div>.*?</div>'
-
-        matches = re.finditer(pattern, html_content, re.DOTALL | re.IGNORECASE)
-
-        for match in matches:
-            label = self._clean_text(match.group(1)).lower()
-            value_html = match.group(2)
-            value_text = self._clean_text(self._strip_tags(value_html))
+        row_fluid_divs = soup.find_all('div', class_='row-fluid')
+        
+        for row_div in row_fluid_divs:
+            etiqueta = row_div.find('div', class_=re.compile(r'etiqueta'))
+            dato = row_div.find('div', class_='dato')
+            
+            if not etiqueta or not dato:
+                continue
+            
+            label = self._clean_text(etiqueta.get_text()).lower()
+            value_text = self._clean_text(dato.get_text())
 
             # Distribution info (date, price, countries)
             if 'distribuci' in label:
                 # Extract date
-                date_match = re.search(r'(\d{1,2}-[IVX]+-\d{4})', value_html)
+                date_match = re.search(r'(\d{1,2}-[IVX]+-\d{4})', dato.get_text())
                 if date_match:
                     metadata['date'] = date_match.group(1)
 
                 # Extract price
-                price_match = re.search(r'([\d.,]+)\s*<strong>&nbsp;(&euro;|\$|€)</strong>', value_html)
-                if price_match:
-                    metadata['price'] = price_match.group(1)
-                    currency_symbol = price_match.group(2)
-                    if 'euro' in currency_symbol or '€' in currency_symbol:
-                        metadata['currency'] = 'EUR'
-                    elif '$' in currency_symbol:
-                        metadata['currency'] = 'USD'
+                for strong in dato.find_all('strong'):
+                    strong_text = strong.get_text()
+                    if '€' in strong_text or 'euro' in strong_text:
+                        # Look for price before this
+                        prev = strong.previous_sibling
+                        if prev and isinstance(prev, str):
+                            price_match = re.search(r'([\d.,]+)\s*$', prev)
+                            if price_match:
+                                metadata['price'] = price_match.group(1)
+                                metadata['currency'] = 'EUR'
+                    elif '$' in strong_text:
+                        prev = strong.previous_sibling
+                        if prev and isinstance(prev, str):
+                            price_match = re.search(r'([\d.,]+)\s*$', prev)
+                            if price_match:
+                                metadata['price'] = price_match.group(1)
+                                metadata['currency'] = 'USD'
 
                 # Extract distribution countries
-                countries = re.findall(r'alt="([^"]+)"', value_html)
-                metadata['distribution_countries'] = [self._clean_text(c) for c in countries]
+                country_imgs = dato.find_all('img', alt=True)
+                metadata['distribution_countries'] = [self._clean_text(img.get('alt', '')) for img in country_imgs if img.get('alt')]
 
             # Edition type
             elif 'edici' in label:
-                types = re.findall(r'<a[^>]*>([^<]+)</a>', value_html)
-                if len(types) >= 1:
-                    metadata['edition'] = self._clean_text(types[0])
-                if len(types) >= 2:
-                    metadata['type'] = self._clean_text(types[1])
-                if len(types) >= 3:
-                    metadata['format'] = self._clean_text(types[2])
+                links = dato.find_all('a')
+                link_texts = [self._clean_text(link.get_text()) for link in links]
+                if len(link_texts) >= 1:
+                    metadata['edition'] = link_texts[0]
+                if len(link_texts) >= 2:
+                    metadata['type'] = link_texts[1]
+                if len(link_texts) >= 3:
+                    metadata['format'] = link_texts[2]
 
             # Origin information
             elif 'origen' in label:
                 metadata['origin_title'] = value_text
 
                 # Extract origin publisher
-                pub_match = re.search(r'<a href="/entidades/[^"]+"\s*>([^<]+)</a>', value_html)
-                if pub_match:
-                    metadata['origin_publisher'] = self._clean_text(pub_match.group(1))
+                pub_link = dato.find('a', href=re.compile(r'/entidades/'))
+                if pub_link:
+                    metadata['origin_publisher'] = self._clean_text(pub_link.get_text())
 
                 # Extract origin country
-                country_match = re.search(r'alt="([^"]+)"', value_html)
-                if country_match:
-                    metadata['origin_country'] = self._clean_text(country_match.group(1))
+                country_img = dato.find('img', alt=True)
+                if country_img:
+                    metadata['origin_country'] = self._clean_text(country_img.get('alt', ''))
 
             # Language
             elif 'lengua' in label:
@@ -601,12 +341,13 @@ class TebeoSferaParser(object):
 
             # Format details (binding, etc.)
             elif 'formato' in label:
-                format_types = re.findall(r'<a[^>]*>([^<]+)</a>', value_html)
-                if format_types:
+                format_links = dato.find_all('a')
+                format_texts = [self._clean_text(link.get_text()) for link in format_links]
+                if format_texts:
                     if not metadata['format']:
-                        metadata['format'] = self._clean_text(format_types[0])
-                    if len(format_types) > 1:
-                        metadata['binding'] = self._clean_text(format_types[1])
+                        metadata['format'] = format_texts[0]
+                    if len(format_texts) > 1:
+                        metadata['binding'] = format_texts[1]
 
             # Dimensions
             elif 'tama' in label:
@@ -624,59 +365,177 @@ class TebeoSferaParser(object):
 
             # Registros (ISBN, Legal Deposit, etc.)
             elif 'registros' in label:
-                isbn_match = re.search(r'ISBN:\s*([\d\-]+)', value_html, re.IGNORECASE)
+                dato_text = dato.get_text()
+                isbn_match = re.search(r'ISBN:\s*([\d\-]+)', dato_text, re.IGNORECASE)
                 if isbn_match:
                     metadata['isbn'] = isbn_match.group(1)
 
-                deposit_match = re.search(r'(?:Dep(?:ósito)?|D\.L\.)[:\.]?\s*([^\s<]+)', value_html, re.IGNORECASE)
+                deposit_match = re.search(r'(?:Dep(?:ósito)?|D\.L\.)[:\.]?\s*([^\s]+)', dato_text, re.IGNORECASE)
                 if deposit_match:
                     metadata['legal_deposit'] = self._clean_text(deposit_match.group(1))
 
-    def _extract_authors(self, html_content, metadata):
+    def _extract_authors_bs(self, soup, metadata):
         '''
-        Extract author information from the authors section.
+        Extract author information from the authors section using BeautifulSoup.
 
-        html_content: HTML string
+        soup: BeautifulSoup object
         metadata: Dictionary to update with extracted data
         '''
-        # Pattern for author sections
-        pattern = r'<span class="tab_subtitulo">([^<]+)<span[^>]*>\d+</span></span>:\s*' \
-                  r'.*?<a href="[^"]*"\s*[^>]*>([^<]+)</a>'
+        # Find all author sections
+        author_spans = soup.find_all('span', class_='tab_subtitulo')
+        
+        for span in author_spans:
+            role_text = span.get_text()
+            # Extract role (ignore the number in <span>)
+            role = re.sub(r'\d+', '', role_text).strip()
+            role = self._clean_text(role).lower()
+            
+            # Find associated author link
+            # The link usually comes after the colon following this span
+            parent = span.parent
+            if parent:
+                # Look for links in the parent or next siblings
+                links = []
+                next_elem = span.next_sibling
+                while next_elem and len(links) < 5:  # Limit search
+                    if hasattr(next_elem, 'name'):
+                        if next_elem.name == 'a':
+                            links.append(next_elem)
+                        elif next_elem.name in ['div', 'p']:
+                            # Stop at major structural elements
+                            break
+                    next_elem = next_elem.next_sibling
+                
+                for link in links:
+                    name = self._clean_text(link.get_text())
+                    if not name:
+                        continue
+                    
+                    # Historietista = guionista + dibujante
+                    if 'historietista' in role:
+                        if name not in metadata['writers']:
+                            metadata['writers'].append(name)
+                        if name not in metadata['pencillers']:
+                            metadata['pencillers'].append(name)
+                    elif 'guion' in role:
+                        if name not in metadata['writers']:
+                            metadata['writers'].append(name)
+                    elif 'dibuj' in role:
+                        if name not in metadata['pencillers']:
+                            metadata['pencillers'].append(name)
+                    elif 'tint' in role:
+                        if name not in metadata['inkers']:
+                            metadata['inkers'].append(name)
+                    elif 'color' in role:
+                        if name not in metadata['colorists']:
+                            metadata['colorists'].append(name)
+                    elif 'letr' in role or 'rotul' in role:
+                        if name not in metadata['letterers']:
+                            metadata['letterers'].append(name)
+                    elif 'portad' in role or 'cubierta' in role:
+                        if name not in metadata['cover_artists']:
+                            metadata['cover_artists'].append(name)
+                    elif 'editor' in role:
+                        if name not in metadata['editors']:
+                            metadata['editors'].append(name)
+                    elif 'traduc' in role:
+                        if name not in metadata['translators']:
+                            metadata['translators'].append(name)
+                    elif 'adapt' in role:
+                        if name not in metadata['adapted_authors']:
+                            metadata['adapted_authors'].append(name)
 
-        matches = re.finditer(pattern, html_content, re.DOTALL | re.IGNORECASE)
+    def _extract_synopsis_bs(self, soup, metadata):
+        '''
+        Extract synopsis/description using BeautifulSoup with multiple fallback patterns.
 
-        for match in matches:
-            role = self._clean_text(match.group(1)).lower()
-            name = self._clean_text(match.group(2))
+        soup: BeautifulSoup object
+        metadata: Dictionary to update with extracted data
+        '''
+        # Pattern 1: Look for "Comentario de la editorial:" or "Información de la editorial:"
+        for pattern in ['Comentario de la editorial', 'Información de la editorial', 'Promoción editorial', 'Argumento']:
+            # Find all text nodes or elements containing this pattern
+            for element in soup.find_all(string=re.compile(pattern, re.IGNORECASE)):
+                # Get parent and following paragraphs
+                parent = element.parent
+                if parent:
+                    # Collect paragraphs after this marker
+                    paragraphs = []
+                    next_elem = parent.next_sibling
+                    while next_elem and len(paragraphs) < 10:
+                        if hasattr(next_elem, 'name'):
+                            if next_elem.name == 'p':
+                                text = self._clean_text_preserve_newlines(next_elem.get_text())
+                                if text and len(text) > 20:
+                                    paragraphs.append(text)
+                            elif next_elem.name in ['h2', 'h3', 'h4', 'div']:
+                                # Stop at major sections
+                                break
+                        next_elem = next_elem.next_sibling
+                    
+                    if paragraphs:
+                        combined = '\n\n'.join(paragraphs)
+                        if len(combined) > 50:
+                            metadata['synopsis'] = combined
+                            return
 
-            # Historietista = guionista + dibujante
-            if 'historietista' in role:
-                if name not in metadata['writers']:
-                    metadata['writers'].append(name)
-                if name not in metadata['pencillers']:
-                    metadata['pencillers'].append(name)
-            elif 'guion' in role:
-                metadata['writers'].append(name)
-            elif 'dibuj' in role:
-                metadata['pencillers'].append(name)
-            elif 'tint' in role:
-                metadata['inkers'].append(name)
-            elif 'color' in role:
-                metadata['colorists'].append(name)
-            elif 'letr' in role or 'rotul' in role:
-                metadata['letterers'].append(name)
-            elif 'portad' in role or 'cubierta' in role:
-                metadata['cover_artists'].append(name)
-            elif 'editor' in role:
-                metadata['editors'].append(name)
-            elif 'traduc' in role:
-                metadata['translators'].append(name)
-            elif 'adapt' in role:
-                metadata['adapted_authors'].append(name)
+        # Pattern 2: Look for <p class="texto">
+        texto_paras = soup.find_all('p', class_='texto')
+        if texto_paras:
+            all_text = []
+            for para in texto_paras:
+                text = self._clean_text_preserve_newlines(para.get_text())
+                if text and len(text) > 10:
+                    all_text.append(text)
+            if all_text:
+                combined = '\n\n'.join(all_text)
+                if len(combined) > 50:
+                    metadata['synopsis'] = combined
+                    return
+
+        # Pattern 3: Find longest substantial paragraph (fallback)
+        all_paragraphs = soup.find_all('p')
+        best_para = None
+        best_score = 0
+        
+        skip_keywords = ['isbn', 'depósito', 'precio', 'páginas', 'formato', 'tamaño', 'color', 'lengua']
+        good_keywords = ['historia', 'personaje', 'aventura', 'narra', 'cuenta', 'viaje', 'muerte', 'vida']
+        
+        for para in all_paragraphs:
+            text = self._clean_text_preserve_newlines(para.get_text())
+            if text and len(text) > 50:
+                text_lower = text.lower()
+                
+                # Count keywords
+                skip_count = sum(1 for skip in skip_keywords if skip in text_lower)
+                good_count = sum(1 for keyword in good_keywords if keyword in text_lower)
+                has_quotes = '"' in text or '\u201c' in text or '\u201d' in text
+                
+                if skip_count >= 2 and good_count == 0 and not has_quotes:
+                    continue
+                
+                # Score based on length and narrative content
+                score = len(text)
+                if good_count > 0 or has_quotes:
+                    score += 500 * good_count
+                    if has_quotes:
+                        score += 300
+                    if skip_count > 0:
+                        score -= 50 * skip_count
+                else:
+                    if skip_count > 0:
+                        score -= 150 * skip_count
+                
+                if score > best_score:
+                    best_score = score
+                    best_para = text
+        
+        if best_para:
+            metadata['synopsis'] = best_para
 
     def parse_search_results(self, html_content):
         '''
-        Parse search results page to extract issue links.
+        Parse search results page to extract issue links using BeautifulSoup.
 
         html_content: HTML string from search results page
         Returns: List of dictionaries with {slug, title, url, thumb_url, series_name, type}
@@ -689,31 +548,18 @@ class TebeoSferaParser(object):
         
         log.debug("=== PARSER STARTING: parse_search_results called with {0} bytes of HTML ===".format(len(html_content)))
 
-        # New approach: Parse by sections marked with <div class="help-block">
-        # Sections are: Colecciones, Sagas, Números, Autores, etc.
-        # Everything between a section header and the next one belongs to that section
+        # Parse HTML with BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
         
-        # Find all section headers
-        section_pattern = r'<div[^>]*class="[^"]*help-block[^"]*"[^>]*>([^<]+)</div>'
-        section_matches = list(re.finditer(section_pattern, html_content, re.IGNORECASE))
+        # Find all section headers (help-block divs)
+        section_headers = soup.find_all('div', class_=re.compile(r'help-block'))
         
-        log.debug("Found {0} section headers".format(len(section_matches)))
-        if section_matches:
-            for i, match in enumerate(section_matches):
-                section_title = self._clean_text(match.group(1)).strip()
-                log.debug("  Section {0}: '{1}'".format(i+1, section_title))
+        log.debug("Found {0} section headers".format(len(section_headers)))
         
         # Process each section
-        for i, section_match in enumerate(section_matches):
-            section_title = self._clean_text(section_match.group(1)).strip()
-            section_start = section_match.end()
-            
-            # Find end of section (start of next section or end of content)
-            section_end = len(html_content)
-            if i + 1 < len(section_matches):
-                section_end = section_matches[i + 1].start()
-            
-            section_content = html_content[section_start:section_end]
+        for i, header in enumerate(section_headers):
+            section_title = self._clean_text(header.get_text()).strip()
+            log.debug("  Section {0}: '{1}'".format(i+1, section_title))
             
             # Determine section type
             section_type = None
@@ -733,448 +579,156 @@ class TebeoSferaParser(object):
             
             log.debug("Processing section: {0} (type: {1})".format(section_title, section_type))
             
-            # Parse results in this section
-            section_results = self._parse_section_results(section_content, section_type)
+            # Find all result lines in this section
+            # Get the next sibling elements until we hit another section header
+            section_results = []
+            next_elem = header.next_sibling
+            while next_elem:
+                if hasattr(next_elem, 'name'):
+                    if next_elem.name == 'div' and next_elem.get('class') and 'help-block' in next_elem.get('class', []):
+                        # Hit next section header
+                        break
+                    elif next_elem.name == 'div' and next_elem.get('class') and 'linea_resultados' in ' '.join(next_elem.get('class', [])):
+                        # Found a result line
+                        result = self._parse_result_line_bs(next_elem, section_type)
+                        if result:
+                            section_results.append(result)
+                next_elem = next_elem.next_sibling
+            
             results.extend(section_results)
             log.debug("Found {0} results in section '{1}'".format(len(section_results), section_title))
         
-        # Fallback: if no results found OR if we're missing collections/sagas, try direct scan
-        # This handles cases where section headers exist but sections are empty/malformed
-        has_collections = any(r.get('type') == 'collection' for r in results)
-        has_sagas = any(r.get('type') == 'saga' for r in results)
+        # Fallback: if no results found, try direct scan for linea_resultados
+        if not results:
+            log.debug("No results found in sections, trying direct link scan")
+            
+            # Find all linea_resultados divs
+            all_lines = soup.find_all('div', class_=re.compile(r'linea_resultados'))
+            log.debug("Found {0} linea_resultados divs via fallback".format(len(all_lines)))
+            
+            for line in all_lines:
+                # Try to determine type from link
+                result = self._parse_result_line_bs(line, None)  # Type will be auto-detected
+                if result:
+                    results.append(result)
         
-        if not results or not has_collections or not has_sagas:
-            if not results:
-                log.debug("No results found in sections, trying direct link scan")
-            else:
-                log.debug("Missing types (collections: {0}, sagas: {1}), trying direct link scan".format(
-                    has_collections, has_sagas))
-            
-            # First, try to find results by scanning for collection/saga links directly
-            # This is more robust than relying on specific HTML structure
-            direct_results = []
-            
-            # Debug: Check if HTML contains the paths we're looking for
-            has_colecciones_path = '/colecciones/' in html_content
-            has_sagas_path = '/sagas/' in html_content
-            colecciones_count = html_content.count('/colecciones/')
-            sagas_count = html_content.count('/sagas/')
-            log.debug("HTML contains paths: /colecciones/={0} (count={1}), /sagas/={2} (count={3})".format(
-                has_colecciones_path, colecciones_count, has_sagas_path, sagas_count))
-            
-            # Find all collection/series links (only if we don't have collections yet)
-            if not has_collections:
-                collection_pattern = r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
-                for match in re.finditer(collection_pattern, html_content, re.IGNORECASE):
-                    url = match.group(1)
-                    slug = match.group(2)
-                    link_html = match.group(3)
-                    title = self._clean_text(self._strip_tags(link_html))
-                    if title and 'img' not in link_html.lower():  # Skip image links
-                        direct_results.append({
-                            'slug': slug,
-                            'title': title,
-                            'url': url,
-                            'series_name': title,
-                            'type': 'collection',
-                            'thumb_url': None
-                        })
-                log.debug("Direct scan found {0} collection links".format(len(direct_results)))
-            
-            # Find all saga links (only if we don't have sagas yet)
-            if not has_sagas:
-                saga_pattern = r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
-                saga_count_before = len(direct_results)
-                for match in re.finditer(saga_pattern, html_content, re.IGNORECASE):
-                    url = match.group(1)
-                    slug = match.group(2)
-                    link_html = match.group(3)
-                    title = self._clean_text(self._strip_tags(link_html))
-                    if title and 'img' not in link_html.lower():  # Skip image links
-                        direct_results.append({
-                            'slug': slug,
-                            'title': title,
-                            'url': url,
-                            'series_name': title,
-                            'type': 'saga',
-                            'thumb_url': None
-                        })
-                log.debug("Direct scan found {0} saga links".format(len(direct_results) - saga_count_before))
-            
-            if direct_results:
-                log.debug("Using {0} results from direct link scan".format(len(direct_results)))
-                results.extend(direct_results)
-            
-            # If we still have no results, try the original linea_resultados method
-            lineas = []
-            if not results:
-                pos = 0
-                while True:
-                    start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
-                    if not start_match:
-                        break
-                    
-                    start_pos = pos + start_match.end()
-                    depth = 1
-                    search_pos = start_pos
-                    end_pos = None
-                    
-                    while depth > 0 and search_pos < len(html_content):
-                        next_tag = re.search(r'</?div[^>]*>', html_content[search_pos:], re.IGNORECASE)
-                        if not next_tag:
-                            break
-                        
-                        tag_pos = search_pos + next_tag.start()
-                        tag = next_tag.group(0).lower()
-                        
-                        if tag.startswith('</div'):
-                            depth -= 1
-                            if depth == 0:
-                                end_pos = tag_pos
-                                break
-                        elif tag.startswith('<div'):
-                            depth += 1
-                        
-                        search_pos = tag_pos + next_tag.end()
-                    
-                    if end_pos:
-                        linea_content = html_content[start_pos:end_pos]
-                        lineas.append((start_pos, end_pos, linea_content))
-                        pos = end_pos + 6
-                    else:
-                        break
-            
-            if not lineas:
-                linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
-                simple_lineas = list(re.finditer(linea_pattern, html_content, re.DOTALL | re.IGNORECASE))
-                lineas = [(m.start(), m.end(), m.group(1)) for m in simple_lineas]
-            
-            log.debug("Found {0} result lines (linea_resultados)".format(len(lineas)))
-            
-            for linea_info in lineas:
-                if isinstance(linea_info, tuple):
-                    _, _, linea_content = linea_info
-                else:
-                    linea_content = linea_info.group(1)
-                
-                # Extract image URL (thumbnail) - look for img with id="img_principal"
-                # The img can be directly in the div or inside an <a> tag
-                img_match = re.search(r'<img[^>]*id="img_principal"[^>]*src="([^"]+)"', linea_content, re.IGNORECASE)
-                thumb_url = img_match.group(1) if img_match else None
-                if thumb_url and not thumb_url.startswith('http'):
-                    thumb_url = 'https://www.tebeosfera.com' + thumb_url
-
-                full_image_match = re.search(
-                    r'<a[^>]*href="([^"]+)"[^>]*>\s*<img[^>]*id="img_principal"',
-                    linea_content,
-                    re.IGNORECASE
-                )
-                full_image_url = full_image_match.group(1) if full_image_match else None
-                if full_image_url and not full_image_url.startswith('http'):
-                    full_image_url = 'https://www.tebeosfera.com' + full_image_url
-                
-                # Extract link and slug - can be issue, collection, or saga
-                # Search for ALL types and prioritize collections/sagas over issues
-                # For each type, we need to find the link that contains text (not just an image)
-                result_type = None
-                url = None
-                slug = None
-                title = None
-                
-                # Try saga link first (highest priority)
-                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>')
-                if title:
-                    result_type = 'saga'
-                
-                # Try collection link (second priority)
-                if not title:
-                    url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>')
-                    if title:
-                        result_type = 'collection'
-                
-                # Try issue link last (lowest priority)
-                if not title:
-                    url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>')
-                    if title:
-                        result_type = 'issue'
-                
-                if not title or not url or not slug:
-                    # No recognized link with text found
-                    continue
-                
-                # For collections and sagas, they are series/groups, not individual issues
-                if result_type in ['collection', 'saga']:
-                    results.append({
-                        'slug': slug,
-                        'title': title,
-                        'url': url,
-                        'thumb_url': thumb_url,
-                        'image_url': full_image_url or thumb_url,
-                        'series_name': title,  # For collections/sagas, title IS the series name
-                        'type': result_type
-                    })
-                    continue
-                
-                # If we get here, it's an issue (/numeros/)
-                # The url, slug, and title were already extracted above
-                full_title = title
-                
-                # Parse series name from format: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
-                # Or: "SERIE (AÑO, EDITORIAL) NÚMERO"
-                # Or: "SERIE (AÑO, EDITORIAL) : TÍTULO"
-                # Or: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
-                series_name = None
-                issue_title = None
-                
-                # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO : TÍTULO"
-                series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
-                if series_match:
-                    series_name = self._clean_text(series_match.group(1))
-                    issue_title = self._clean_text(series_match.group(3))
-                else:
-                    # Try pattern: "SERIE -SUBTÍTULO- NÚMERO : TÍTULO"
-                    series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
-                    if series_match:
-                        series_name = self._clean_text(series_match.group(1))
-                        issue_title = self._clean_text(series_match.group(4))
-                    else:
-                        # Try pattern: "SERIE (AÑO, EDITORIAL) NÚMERO"
-                        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]+)$', full_title)
-                        if series_match:
-                            series_name = self._clean_text(series_match.group(1))
-                            issue_title = self._clean_text(series_match.group(2))
-                        else:
-                            # Try pattern: "SERIE (AÑO, EDITORIAL) : TÍTULO"
-                            series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*:\s*(.+)$', full_title)
-                            if series_match:
-                                series_name = self._clean_text(series_match.group(1))
-                                issue_title = self._clean_text(series_match.group(2))
-                            else:
-                                # Try pattern: "SERIE -SUBTÍTULO- NÚMERO"
-                                series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]+)$', full_title)
-                                if series_match:
-                                    series_name = self._clean_text(series_match.group(1))
-                                    issue_title = self._clean_text(series_match.group(3))
-                                else:
-                                    # Fallback: use first part before parentheses or dash
-                                    series_match = re.match(r'^(.+?)(?:\s*\(|\s*-)', full_title)
-                                    if series_match:
-                                        series_name = self._clean_text(series_match.group(1))
-                                    else:
-                                        # Last resort: use slug to guess series name
-                                        # Take first 2-3 parts of slug as series name
-                                        slug_parts = slug.split('_')
-                                        if len(slug_parts) >= 2:
-                                            series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
-                                        else:
-                                            series_name = slug.split('_')[0].replace('_', ' ').title()
-                
-                if series_name:
-                    results.append({
-                        'slug': slug,
-                        'title': full_title,
-                        'url': url,
-                        'thumb_url': thumb_url,
-                        'image_url': full_image_url or thumb_url,
-                        'series_name': series_name.strip(),
-                        'issue_title': issue_title.strip() if issue_title else None,
-                        'type': 'issue'
-                    })
-
         log.debug("Parser returning {0} total results".format(len(results)))
         return results
 
-    def _parse_section_results(self, section_content, section_type):
+    def _parse_result_line_bs(self, line_div, section_type=None):
         '''
-        Parse results from a section (Colecciones, Sagas, Números, etc.)
-        
-        section_content: HTML content of the section
-        section_type: 'collection', 'saga', or 'issue'
-        Returns: List of result dictionaries
+        Parse a single result line using BeautifulSoup.
+
+        line_div: BeautifulSoup element (div with class linea_resultados)
+        section_type: Expected type ('collection', 'saga', 'issue') or None to auto-detect
+        Returns: Dictionary with result data, or None if parsing fails
         '''
-        results = []
-        from utils_compat import log
-        
-        # Find all linea_resultados in this section
-        # IMPORTANT: Use a more robust approach that handles nested/malformed HTML
-        # First, find ALL linea_resultados opening tags
-        linea_openings = list(re.finditer(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', section_content, re.IGNORECASE))
-        
-        lineas = []
-        for i, opening_match in enumerate(linea_openings):
-            start_pos = opening_match.end()
-            
-            # Find the boundary for this linea: either the next linea opening or end of section
-            # This prevents the depth tracker from skipping over nested linea_resultados divs
-            # by ensuring we only search within a region that doesn't contain the start of another linea
-            if i + 1 < len(linea_openings):
-                boundary = linea_openings[i + 1].start()
-            else:
-                boundary = len(section_content)
-            
-            # Within this boundary, find the matching closing div using depth tracking
-            # The search_region is bounded so we cannot accidentally skip subsequent lineas
-            search_region = section_content[start_pos:boundary]
-            depth = 1
-            search_pos = 0
-            end_pos = None
-            
-            while depth > 0 and search_pos < len(search_region):
-                next_tag = re.search(r'</?div[^>]*>', search_region[search_pos:], re.IGNORECASE)
-                if not next_tag:
-                    break
-                
-                tag_pos = search_pos + next_tag.start()
-                tag_lower = next_tag.group(0).lower()
-                
-                if tag_lower.startswith('</div'):
-                    depth -= 1
-                    if depth == 0:
-                        end_pos = tag_pos
-                        break
-                elif tag_lower.startswith('<div'):
-                    # Don't count nested linea_resultados as increasing depth
-                    # since they should be processed separately in their own iteration
-                    # This handles cases where tebeosfera.com returns malformed HTML
-                    # with linea_resultados divs nested inside each other
-                    if 'linea_resultados' not in tag_lower:
-                        depth += 1
-                
-                search_pos += next_tag.end()
-            
-            if end_pos is not None:
-                linea_content = search_region[:end_pos]
-                lineas.append(linea_content)
-            else:
-                # Fallback for malformed HTML: if we couldn't find a proper closing tag
-                # within the boundary, use the entire region up to the next linea opening
-                # This prevents losing data when the HTML structure is invalid
-                lineas.append(search_region)
-        
-        # Fallback to simple pattern if no results found
-        if not lineas:
-            linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
-            simple_lineas = re.finditer(linea_pattern, section_content, re.DOTALL | re.IGNORECASE)
-            lineas = [m.group(1) for m in simple_lineas]
-        
-        # Parse each result in this section
-        for linea_content in lineas:
-            # Extract image URL (thumbnail)
-            img_match = re.search(r'<img[^>]*id="img_principal"[^>]*src="([^"]+)"', linea_content, re.IGNORECASE)
-            thumb_url = img_match.group(1) if img_match else None
+        # Extract thumbnail
+        thumb_url = None
+        cover_img = line_div.find('img', id='img_principal')
+        if cover_img:
+            thumb_url = cover_img.get('src', '')
             if thumb_url and not thumb_url.startswith('http'):
                 thumb_url = 'https://www.tebeosfera.com' + thumb_url
-
-            full_image_match = re.search(
-                r'<a[^>]*href="([^"]+)"[^>]*>\s*<img[^>]*id="img_principal"',
-                linea_content,
-                re.IGNORECASE
-            )
-            full_image_url = full_image_match.group(1) if full_image_match else None
-            if full_image_url and not full_image_url.startswith('http'):
-                full_image_url = 'https://www.tebeosfera.com' + full_image_url
-            
-            # Find the main link - use the section type to determine which link to look for
-            # There may be multiple links with the same href (one for image, one for text)
-            # We need the one that contains actual text content
-            url = None
-            slug = None
-            title = None
-            
-            if section_type == 'saga':
-                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>')
-            elif section_type == 'collection':
-                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>')
-            else:  # issue
-                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>')
-            
-            # Fallback: try any link type if pattern didn't match
-            if not title:
-                # Try other types
-                fallback_patterns = {
-                    'saga': r'<a[^>]*href="(/(?:sagas)/([^"]+)\.html)"[^>]*>',
-                    'collection': r'<a[^>]*href="(/(?:colecciones)/([^"]+)\.html)"[^>]*>',
-                    'issue': r'<a[^>]*href="(/(?:numeros)/([^"]+)\.html)"[^>]*>'
-                }
-                # Order of fallback: sagas, then collections, then issues
-                for ft_type in ['saga', 'collection', 'issue']:
-                    if ft_type == section_type:
-                        continue # Already tried this type
         
-                    url, slug, title = self._find_link_with_text(linea_content, fallback_patterns[ft_type])
-                    if title:
-                        # The type of the result is actually what we found, not the section_type
-                        section_type = ft_type
+        # Extract full image URL (from <a> wrapping the img)
+        full_image_url = None
+        if cover_img:
+            parent_link = cover_img.find_parent('a')
+            if parent_link:
+                full_image_url = parent_link.get('href', '')
+                if full_image_url and not full_image_url.startswith('http'):
+                    full_image_url = 'https://www.tebeosfera.com' + full_image_url
+        
+        # Find the main content link (not image link)
+        url = None
+        slug = None
+        title = None
+        result_type = section_type
+        
+        # Try different link types based on section type
+        link_patterns = []
+        if section_type == 'saga' or not section_type:
+            link_patterns.append(('saga', re.compile(r'/sagas/([^/]+)\.html')))
+        if section_type == 'collection' or not section_type:
+            link_patterns.append(('collection', re.compile(r'/colecciones/([^/]+)\.html')))
+        if section_type == 'issue' or not section_type:
+            link_patterns.append(('issue', re.compile(r'/numeros/([^/]+)\.html')))
+        
+        # Find links with text content (not just images)
+        for link_type, href_pattern in link_patterns:
+            links = line_div.find_all('a', href=href_pattern)
+            for link in links:
+                link_text = self._clean_text(link.get_text())
+                if link_text:  # Has actual text content
+                    href = link.get('href', '')
+                    match = href_pattern.search(href)
+                    if match:
+                        url = href
+                        slug = match.group(1)
+                        title = link_text
+                        result_type = link_type
                         break
-            
-            if not url or not slug:
-                continue
-            
-            # For collections and sagas, title IS the series name
-            if section_type in ['collection', 'saga']:
-                results.append({
-                    'slug': slug,
-                    'title': title,
-                    'url': url,
-                    'thumb_url': thumb_url,
-                    'image_url': full_image_url or thumb_url,
-                    'series_name': title,
-                    'type': section_type
-                })
+            if title:
+                break
+        
+        if not url or not slug or not title:
+            return None
+        
+        # For collections and sagas, title IS the series name
+        if result_type in ['collection', 'saga']:
+            return {
+                'slug': slug,
+                'title': title,
+                'url': url,
+                'thumb_url': thumb_url,
+                'image_url': full_image_url or thumb_url,
+                'series_name': title,
+                'type': result_type
+            }
+        
+        # For issues, parse series name from title
+        full_title = title
+        series_name = None
+        issue_title = None
+        
+        # Try various patterns to extract series name
+        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
+        if series_match:
+            series_name = self._clean_text(series_match.group(1))
+            issue_title = self._clean_text(series_match.group(3))
+        else:
+            series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
+            if series_match:
+                series_name = self._clean_text(series_match.group(1))
+                issue_title = self._clean_text(series_match.group(4))
             else:
-                # For issues, parse series name from title
-                full_title = title
-                series_name = None
-                issue_title = None
-                
-                # Try same patterns as before
-                series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]*?)\s*:\s*(.+)$', full_title)
+                series_match = re.match(r'^(.+?)\s*\([^)]+\)', full_title)
                 if series_match:
                     series_name = self._clean_text(series_match.group(1))
-                    issue_title = self._clean_text(series_match.group(3))
                 else:
-                    series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]*?)\s*:\s*(.+)$', full_title)
-                    if series_match:
-                        series_name = self._clean_text(series_match.group(1))
-                        issue_title = self._clean_text(series_match.group(4))
+                    # Fallback: use first part of slug
+                    slug_parts = slug.split('_')
+                    if len(slug_parts) >= 2:
+                        series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
                     else:
-                        series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*([^:]+)$', full_title)
-                        if series_match:
-                            series_name = self._clean_text(series_match.group(1))
-                            issue_title = self._clean_text(series_match.group(2))
-                        else:
-                            series_match = re.match(r'^(.+?)\s*\([^)]+\)\s*:\s*(.+)$', full_title)
-                            if series_match:
-                                series_name = self._clean_text(series_match.group(1))
-                                issue_title = self._clean_text(series_match.group(2))
-                            else:
-                                series_match = re.match(r'^(.+?)\s*-\s*([^-]+)\s*-\s*([^:]+)$', full_title)
-                                if series_match:
-                                    series_name = self._clean_text(series_match.group(1))
-                                    issue_title = self._clean_text(series_match.group(3))
-                                else:
-                                    series_match = re.match(r'^(.+?)(?:\s*\(|\s*-)', full_title)
-                                    if series_match:
-                                        series_name = self._clean_text(series_match.group(1))
-                                    else:
-                                        slug_parts = slug.split('_')
-                                        if len(slug_parts) >= 2:
-                                            series_name = ' '.join(slug_parts[:2]).replace('_', ' ').title()
-                                        else:
-                                            series_name = slug.split('_')[0].replace('_', ' ').title()
-                
-                if series_name:
-                    results.append({
-                        'slug': slug,
-                        'title': full_title,
-                        'url': url,
-                        'thumb_url': thumb_url,
-                        'image_url': full_image_url or thumb_url,
-                        'series_name': series_name.strip(),
-                        'issue_title': issue_title.strip() if issue_title else None,
-                        'type': 'issue'
-                    })
+                        series_name = slug.split('_')[0].replace('_', ' ').title()
         
+        if series_name:
+            return {
+                'slug': slug,
+                'title': full_title,
+                'url': url,
+                'thumb_url': thumb_url,
+                'image_url': full_image_url or thumb_url,
+                'series_name': series_name.strip(),
+                'issue_title': issue_title.strip() if issue_title else None,
+                'type': 'issue'
+            }
+        
+        return None
+        
+        log.debug("Parser returning {0} total results".format(len(results)))
         return results
 
     def _parse_date(self, date_string):
@@ -1271,33 +825,6 @@ class TebeoSferaParser(object):
         text = re.sub(r'\n{3,}', '\n\n', text)
         
         return text.strip()
-
-    def _find_link_with_text(self, html_content, link_pattern):
-        '''
-        Find a link matching the pattern that contains actual text (not just an image).
-        
-        html_content: HTML string to search
-        link_pattern: Regex pattern to find links (should capture URL and slug in groups)
-        Returns: Tuple (url, slug, title) or (None, None, None) if not found
-        '''
-        all_matches = list(re.finditer(link_pattern, html_content, re.IGNORECASE))
-        for link_match in all_matches:
-            url = link_match.group(1)
-            slug = link_match.group(2)
-            
-            # Extract link text
-            link_start = link_match.end()
-            link_end_match = re.search(r'</a>', html_content[link_start:], re.IGNORECASE)
-            if not link_end_match:
-                continue
-            link_text = html_content[link_start:link_start+link_end_match.start()]
-            
-            # Check if this link contains actual text (not just an image)
-            text_content = self._clean_text(self._strip_tags(link_text))
-            if text_content:  # Found a link with actual text
-                return (url, slug, text_content)
-        
-        return (None, None, None)
 
     def _strip_tags(self, html):
         '''

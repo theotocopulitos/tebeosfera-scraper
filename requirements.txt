@@ -4,3 +4,6 @@
 # Required for GUI
 Pillow>=8.0.0
 rarfile>=4.0
+
+# Required for HTML parsing
+beautifulsoup4>=4.9.0
