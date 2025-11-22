@@ -1005,13 +1005,15 @@ class TebeoSferaParser(object):
             start_pos = opening_match.end()
             
             # Find the boundary for this linea: either the next linea opening or end of section
+            # This prevents the depth tracker from skipping over nested linea_resultados divs
+            # by ensuring we only search within a region that doesn't contain the start of another linea
             if i + 1 < len(linea_openings):
                 boundary = linea_openings[i + 1].start()
             else:
                 boundary = len(section_content)
             
-            # Within this boundary, find the matching closing div
-            # Use depth tracking but only within the boundary
+            # Within this boundary, find the matching closing div using depth tracking
+            # The search_region is bounded so we cannot accidentally skip subsequent lineas
             search_region = section_content[start_pos:boundary]
             depth = 1
             search_pos = 0
@@ -1032,7 +1034,9 @@ class TebeoSferaParser(object):
                         break
                 elif tag_lower.startswith('<div'):
                     # Don't count nested linea_resultados as increasing depth
-                    # since they should be processed separately
+                    # since they should be processed separately in their own iteration
+                    # This handles cases where tebeosfera.com returns malformed HTML
+                    # with linea_resultados divs nested inside each other
                     if 'linea_resultados' not in tag_lower:
                         depth += 1
                 
@@ -1042,8 +1046,9 @@ class TebeoSferaParser(object):
                 linea_content = search_region[:end_pos]
                 lineas.append(linea_content)
             else:
-                # If we couldn't find a proper closing tag, use the entire region up to the boundary
-                # This handles malformed HTML better
+                # Fallback for malformed HTML: if we couldn't find a proper closing tag
+                # within the boundary, use the entire region up to the next linea opening
+                # This prevents losing data when the HTML structure is invalid
                 lineas.append(search_region)
         
         # Fallback to simple pattern if no results found
