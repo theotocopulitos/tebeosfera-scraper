@@ -31,7 +31,11 @@ TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
 # UI Constants
 MAX_FILENAME_LENGTH = 60  # Maximum characters for filename display in dialogs
 
-# Default color scheme for the application
+# CustomTkinter button color constants
+CTK_BUTTON_ACTIVE_COLOR = ("gray75", "#3B8ED0")  # Active button color (CTk default blue)
+CTK_BUTTON_INACTIVE_COLOR = "gray50"  # Inactive button color
+
+# Default color scheme for the application (legacy, kept for compatibility)
 DEFAULT_COLORS = {
     'bg': '#f5f5f5',
     'fg': '#2c3e50',
@@ -49,6 +53,12 @@ DEFAULT_COLORS = {
     'text_dark': '#2c3e50',
     'text_light': '#7f8c8d'
 }
+
+
+def set_toggle_button_colors(active_button, inactive_button):
+    """Helper to set colors for toggle buttons (e.g., metadata view toggle)"""
+    active_button.configure(fg_color=CTK_BUTTON_ACTIVE_COLOR)
+    inactive_button.configure(fg_color=CTK_BUTTON_INACTIVE_COLOR)
 
 
 def build_series_url(series_key_or_path):
@@ -918,7 +928,7 @@ class TebeoSferaGUI(ctk.CTk):
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Progress bar using customtkinter
-        self.progress = ctk.CTkProgressBar(status_container, orientation="horizontal", mode='determinate')
+        self.progress = ctk.CTkProgressBar(status_container, orientation="horizontal")
         # Initially hidden
 
     def _open_files(self):
@@ -1071,13 +1081,11 @@ class TebeoSferaGUI(ctk.CTk):
         '''Toggle between XML and Pretty view'''
         self.metadata_view_mode.set(mode)
         
-        # Update button styles for customtkinter
+        # Update button styles using helper
         if mode == "xml":
-            self.metadata_xml_button.configure(fg_color=("gray75", "#3B8ED0"))  # CTk default blue
-            self.metadata_pretty_button.configure(fg_color="gray50")
+            set_toggle_button_colors(self.metadata_xml_button, self.metadata_pretty_button)
         else:
-            self.metadata_xml_button.configure(fg_color="gray50")
-            self.metadata_pretty_button.configure(fg_color=("gray75", "#3B8ED0"))
+            set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
         
         self._render_metadata_view()
     
@@ -2727,13 +2735,11 @@ class SearchDialog(ctk.CTkToplevel):
         new_mode = 'xml' if current == 'pretty' else 'pretty'
         self.metadata_view_mode.set(new_mode)
         
-        # Update button styles for customtkinter
+        # Update button styles using helper
         if new_mode == 'xml':
-            self.metadata_xml_button.configure(fg_color=("gray75", "#3B8ED0"))  # CTk default blue
-            self.metadata_pretty_button.configure(fg_color="gray50")
+            set_toggle_button_colors(self.metadata_xml_button, self.metadata_pretty_button)
         else:
-            self.metadata_xml_button.configure(fg_color="gray50")
-            self.metadata_pretty_button.configure(fg_color=("gray75", "#3B8ED0"))
+            set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
         
         # Update display
         self.metadata_display.config(state=tk.NORMAL)
