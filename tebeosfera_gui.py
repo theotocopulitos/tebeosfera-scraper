@@ -712,12 +712,41 @@ class TebeoSferaGUI(tk.Tk):
         preview_section = tk.Frame(right_frame, bg=self.colors['card_bg'])
         preview_section.pack(fill=tk.BOTH, expand=True, padx=15, pady=(15, 10))
         
-        # Section header
+        # Section header with navigation controls
         header = tk.Frame(preview_section, bg=self.colors['card_bg'])
         header.pack(fill=tk.X, pady=(0, 10))
+        
+        # Left side: title
         tk.Label(header, text="🖼️ Vista previa y metadatos", 
                 font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
-                fg=self.colors['text_dark']).pack(anchor=tk.W)
+                fg=self.colors['text_dark']).pack(side=tk.LEFT)
+        
+        # Right side: page navigation controls
+        nav_controls = tk.Frame(header, bg=self.colors['card_bg'])
+        nav_controls.pack(side=tk.RIGHT)
+        
+        self.prev_page_button = tk.Button(nav_controls, text="◀",
+                                          command=self._show_prev_page, state=tk.DISABLED,
+                                          width=3, font=('Arial', 10, 'bold'),
+                                          bg=self.colors['secondary'], fg='white',
+                                          relief=tk.FLAT, bd=0, cursor='hand2',
+                                          activebackground=self.colors['text_light'])
+        self.prev_page_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.page_info_label = tk.Label(nav_controls, text="0/0", 
+                                       font=('Arial', 9, 'bold'), width=8,
+                                       bg=self.colors['card_bg'],
+                                       fg=self.colors['text_dark'])
+        self.page_info_label.pack(side=tk.LEFT, padx=5)
+        
+        self.next_page_button = tk.Button(nav_controls, text="▶",
+                                          command=self._show_next_page, state=tk.DISABLED,
+                                          width=3, font=('Arial', 10, 'bold'),
+                                          bg=self.colors['secondary'], fg='white',
+                                          relief=tk.FLAT, bd=0, cursor='hand2',
+                                          activebackground=self.colors['text_light'])
+        self.next_page_button.pack(side=tk.LEFT, padx=(5, 0))
+        
         tk.Frame(preview_section, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
         
         # PanedWindow para dividir portada (izquierda) y metadatos (derecha)
@@ -802,48 +831,6 @@ class TebeoSferaGUI(tk.Tk):
         # Store current metadata for toggling
         self.current_metadata_xml = None
         self.current_metadata_dict = None
-
-        # ========== SECCIÓN 2: NAVEGACIÓN DE PÁGINAS ==========
-        page_nav_frame = tk.Frame(right_frame, bg=self.colors['card_bg'])
-        page_nav_frame.pack(fill=tk.X, padx=15, pady=(0, 10))
-        
-        # Separator line
-        tk.Frame(page_nav_frame, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
-        
-        # Navigation controls with better styling
-        nav_controls = tk.Frame(page_nav_frame, bg=self.colors['card_bg'])
-        nav_controls.pack(pady=5)
-        
-        # Spacer to center the navigation controls
-        tk.Frame(nav_controls, bg=self.colors['card_bg']).pack(side=tk.LEFT, expand=True)
-        
-        self.prev_page_button = tk.Button(nav_controls, text="◀",
-                                          command=self._show_prev_page, state=tk.DISABLED,
-                                          width=4, font=('Arial', 11, 'bold'),
-                                          bg=self.colors['secondary'], fg='white',
-                                          relief=tk.FLAT, bd=0, cursor='hand2',
-                                          activebackground=self.colors['text_light'])
-        self.prev_page_button.pack(side=tk.LEFT, padx=5)
-        
-        self.page_info_label = tk.Label(nav_controls, text="0/0", 
-                                       font=('Arial', 10, 'bold'), width=12,
-                                       bg=self.colors['card_bg'],
-                                       fg=self.colors['text_dark'])
-        self.page_info_label.pack(side=tk.LEFT, padx=10)
-        
-        self.next_page_button = tk.Button(nav_controls, text="▶",
-                                          command=self._show_next_page, state=tk.DISABLED,
-                                          width=4, font=('Arial', 11, 'bold'),
-                                          bg=self.colors['secondary'], fg='white',
-                                          relief=tk.FLAT, bd=0, cursor='hand2',
-                                          activebackground=self.colors['text_light'])
-        self.next_page_button.pack(side=tk.LEFT, padx=5)
-        
-        # Spacer to center the navigation controls
-        tk.Frame(nav_controls, bg=self.colors['card_bg']).pack(side=tk.LEFT, expand=True)
-        
-        # Separator line
-        tk.Frame(page_nav_frame, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(10, 0))
 
         # ========== SECCIÓN 3: BOTONES DE ACCIÓN ==========
         button_frame = tk.Frame(right_frame, bg=self.colors['card_bg'])
