@@ -686,6 +686,8 @@ class TebeoSferaParser(object):
 
         results = []
         from utils_compat import log
+        
+        log.debug("=== PARSER STARTING: parse_search_results called with {0} bytes of HTML ===".format(len(html_content)))
 
         # New approach: Parse by sections marked with <div class="help-block">
         # Sections are: Colecciones, Sagas, Números, Autores, etc.
