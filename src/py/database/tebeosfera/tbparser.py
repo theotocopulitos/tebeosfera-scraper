@@ -1023,17 +1023,17 @@ class TebeoSferaParser(object):
                     break
                 
                 tag_pos = search_pos + next_tag.start()
-                tag = next_tag.group(0).lower()
+                tag_lower = next_tag.group(0).lower()
                 
-                if tag.startswith('</div'):
+                if tag_lower.startswith('</div'):
                     depth -= 1
                     if depth == 0:
                         end_pos = tag_pos
                         break
-                elif tag.startswith('<div'):
+                elif tag_lower.startswith('<div'):
                     # Don't count nested linea_resultados as increasing depth
                     # since they should be processed separately
-                    if 'linea_resultados' not in tag:
+                    if 'linea_resultados' not in tag_lower:
                         depth += 1
                 
                 search_pos = tag_pos + next_tag.end()
@@ -1041,7 +1041,7 @@ class TebeoSferaParser(object):
             if end_pos is not None:
                 linea_content = search_region[:end_pos]
                 lineas.append(linea_content)
-            elif len(search_region) > 0:
+            else:
                 # If we couldn't find a proper closing tag, use the entire region up to the boundary
                 # This handles malformed HTML better
                 lineas.append(search_region)
