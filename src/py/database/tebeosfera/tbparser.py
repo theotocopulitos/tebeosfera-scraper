@@ -171,7 +171,17 @@ class TebeoSferaParser(object):
 
         # Extract issue number and collection info
         # Look for pattern: "Nº X de <link>SERIES</link> [de Y]"
-        for strong in soup.find_all('strong'):
+        # Search within titulo_ficha or its immediate siblings for more context
+        titulo_ficha = soup.find('div', id='titulo_ficha')
+        search_area = soup
+        if titulo_ficha:
+            # Create a search area that includes titulo_ficha and a few siblings
+            search_area = soup.new_tag('div')
+            search_area.append(titulo_ficha)
+            for sibling in titulo_ficha.find_next_siblings(limit=3):
+                search_area.append(sibling)
+        
+        for strong in search_area.find_all('strong'):
             text = strong.get_text().strip()
             if 'Nº' in text or 'N°' in text:
                 # Navigate to find number and collection
@@ -196,23 +206,34 @@ class TebeoSferaParser(object):
                 break
 
         # Extract publisher, location, and country
-        # Look for pattern: <a>PUBLISHER</a> · <span>LOCATION</span> · <img alt="COUNTRY">
-        publisher_links = soup.find_all('a', href=re.compile(r'/entidades/'))
-        for link in publisher_links:
-            publisher_text = self._clean_text(link.get_text())
-            if publisher_text:
-                metadata['publisher'] = publisher_text
-        
-                # Use find_next_sibling for robust traversal
-                location_span = link.find_next_sibling('span')
-                if location_span:
-                    metadata['publisher_location'] = self._clean_text(location_span.get_text())
+        # Look for pattern in the header area, not throughout entire page
+        # The publisher info typically appears near the top in a specific structure
+        titulo_ficha = soup.find('div', id='titulo_ficha')
+        if titulo_ficha:
+            # Search for publisher links within or after the titulo_ficha section
+            publisher_links = titulo_ficha.find_all('a', href=re.compile(r'/entidades/'))
+            if not publisher_links:
+                # Look in the next few siblings if not in titulo_ficha
+                for sibling in titulo_ficha.find_next_siblings(limit=5):
+                    publisher_links = sibling.find_all('a', href=re.compile(r'/entidades/'))
+                    if publisher_links:
+                        break
+            
+            for link in publisher_links:
+                publisher_text = self._clean_text(link.get_text())
+                if publisher_text:
+                    metadata['publisher'] = publisher_text
+            
+                    # Use find_next_sibling for robust traversal
+                    location_span = link.find_next_sibling('span')
+                    if location_span:
+                        metadata['publisher_location'] = self._clean_text(location_span.get_text())
 
-                country_img = link.find_next_sibling('img')
-                if country_img and country_img.get('alt'):
-                    metadata['publisher_country'] = self._clean_text(country_img['alt'])
-        
-                break
+                    country_img = link.find_next_sibling('img')
+                    if country_img and country_img.get('alt'):
+                        metadata['publisher_country'] = self._clean_text(country_img['alt'])
+            
+                    break
 
         # Extract all row-fluid dato fields using BeautifulSoup
         self._extract_field_rows_bs(soup, metadata)
@@ -462,24 +483,26 @@ class TebeoSferaParser(object):
         for pattern in ['Comentario de la editorial', 'Información de la editorial', 'Promoción editorial', 'Argumento']:
             # Find all text nodes or elements containing this pattern
             for element in soup.find_all(string=re.compile(pattern, re.IGNORECASE)):
-                # Get parent and following paragraphs
+                # Get parent and following paragraphs using find_next_siblings for robust traversal
                 parent = element.parent
                 if parent:
                     # Collect paragraphs after this marker
                     # Limit to 10 paragraphs to avoid collecting unrelated content
                     MAX_SYNOPSIS_PARAGRAPHS = 10
+                    
+                    # Use find_next_siblings to get paragraph elements, which is more robust
+                    # than iterating through next_sibling
                     paragraphs = []
-                    next_elem = parent.next_sibling
-                    while next_elem and len(paragraphs) < MAX_SYNOPSIS_PARAGRAPHS:
-                        if hasattr(next_elem, 'name'):
-                            if next_elem.name == 'p':
-                                text = self._clean_text_preserve_newlines(next_elem.get_text())
-                                if text and len(text) > 20:
-                                    paragraphs.append(text)
-                            elif next_elem.name in ['h2', 'h3', 'h4', 'div']:
-                                # Stop at major sections
-                                break
-                        next_elem = next_elem.next_sibling
+                    for next_p in parent.find_next_siblings(['p', 'h2', 'h3', 'h4', 'div']):
+                        if next_p.name in ['h2', 'h3', 'h4', 'div']:
+                            # Stop at major sections
+                            break
+                        if next_p.name == 'p':
+                            text = self._clean_text_preserve_newlines(next_p.get_text())
+                            if text and len(text) > 20:
+                                paragraphs.append(text)
+                                if len(paragraphs) >= MAX_SYNOPSIS_PARAGRAPHS:
+                                    break
                     
                     if paragraphs:
                         combined = '\n\n'.join(paragraphs)
@@ -587,21 +610,32 @@ class TebeoSferaParser(object):
             
             log.debug("Processing section: {0} (type: {1})".format(section_title, section_type))
             
-            # Find all result lines in this section
-            # Get the next sibling elements until we hit another section header
+            # Find all result lines in this section using find_next_siblings for robust traversal
             section_results = []
-            next_elem = header.next_sibling
-            while next_elem:
-                if hasattr(next_elem, 'name'):
-                    if next_elem.name == 'div' and next_elem.get('class') and 'help-block' in next_elem.get('class', []):
-                        # Hit next section header
-                        break
-                    elif next_elem.name == 'div' and next_elem.get('class') and 'linea_resultados' in next_elem.get('class', []):
-                        # Found a result line
-                        result = self._parse_result_line_bs(next_elem, section_type)
-                        if result:
-                            section_results.append(result)
-                next_elem = next_elem.next_sibling
+            
+            # Find all linea_resultados divs that are siblings or descendants after this header
+            # Use find_all_next to get all matching divs after the header, then filter to section
+            current_elem = header
+            while current_elem:
+                # Look for the next linea_resultados div
+                next_result = current_elem.find_next('div', class_=re.compile(r'linea_resultados'))
+                if not next_result:
+                    break
+                
+                # Check if we've hit the next section header
+                next_header = current_elem.find_next('div', class_=re.compile(r'help-block'))
+                if next_header and (not next_result or 
+                    (next_header.sourceline and next_result.sourceline and 
+                     next_header.sourceline < next_result.sourceline)):
+                    # Next section header comes before next result, we're done with this section
+                    break
+                
+                # Process this result
+                result = self._parse_result_line_bs(next_result, section_type)
+                if result:
+                    section_results.append(result)
+                
+                current_elem = next_result
             
             results.extend(section_results)
             log.debug("Found {0} results in section '{1}'".format(len(section_results), section_title))
