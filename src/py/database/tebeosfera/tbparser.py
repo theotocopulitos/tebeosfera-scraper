@@ -754,6 +754,14 @@ class TebeoSferaParser(object):
             # This is more robust than relying on specific HTML structure
             direct_results = []
             
+            # Debug: Check if HTML contains the paths we're looking for
+            has_colecciones_path = '/colecciones/' in html_content
+            has_sagas_path = '/sagas/' in html_content
+            colecciones_count = html_content.count('/colecciones/')
+            sagas_count = html_content.count('/sagas/')
+            log.debug("HTML contains paths: /colecciones/={0} (count={1}), /sagas/={2} (count={3})".format(
+                has_colecciones_path, colecciones_count, has_sagas_path, sagas_count))
+            
             # Find all collection links
             collection_pattern = r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)</a>'
             for match in re.finditer(collection_pattern, html_content, re.IGNORECASE):
@@ -796,8 +804,8 @@ class TebeoSferaParser(object):
                 results.extend(direct_results)
             
             # If we still have no results, try the original linea_resultados method
+            lineas = []
             if not results:
-                lineas = []
                 pos = 0
                 while True:
                     start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', html_content[pos:], re.IGNORECASE)
