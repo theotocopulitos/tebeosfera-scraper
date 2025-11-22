@@ -117,11 +117,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
 # Tkinter imports (Python 3)
 try:
     import tkinter as tk
-    from tkinter import filedialog, messagebox, ttk
+    from tkinter import filedialog, messagebox
+    import customtkinter as ctk
     from PIL import Image, ImageTk
 except ImportError as e:
-    print("Error: This GUI requires tkinter and PIL/Pillow")
-    print("Install with: pip install pillow")
+    print("Error: This GUI requires tkinter, customtkinter and PIL/Pillow")
+    print("Install with: pip install customtkinter pillow")
     sys.exit(1)
 
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
@@ -457,20 +458,22 @@ class ComicFile(object):
             return None
 
 
-class TebeoSferaGUI(tk.Tk):
+class TebeoSferaGUI(ctk.CTk):
     '''Main GUI application window'''
 
     def __init__(self):
-        tk.Tk.__init__(self)
+        ctk.CTk.__init__(self)
+        
+        # Set customtkinter appearance mode and color theme
+        ctk.set_appearance_mode("light")  # Modes: "System" (default), "Dark", "Light"
+        ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
 
         self.title("TebeoSfera Scraper - Comic Metadata Editor")
         self.geometry("1280x850")
         
-        # Use default color scheme
+        # No need for manual color scheme with customtkinter
+        # Keeping it for compatibility with any remaining legacy code
         self.colors = DEFAULT_COLORS.copy()
-        
-        # Configure main window style
-        self.configure(bg=self.colors['bg'])
 
         # Comic files list
         self.comic_files = []
@@ -566,80 +569,58 @@ class TebeoSferaGUI(tk.Tk):
 
     def _create_toolbar(self):
         '''Create toolbar with quick actions'''
-        toolbar = tk.Frame(self, bg=self.colors['toolbar_bg'], bd=0, relief=tk.FLAT, height=50)
+        toolbar = ctk.CTkFrame(self, corner_radius=0, height=50)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
         
         # Add padding inside toolbar
-        inner_toolbar = tk.Frame(toolbar, bg=self.colors['toolbar_bg'])
+        inner_toolbar = ctk.CTkFrame(toolbar, fg_color="transparent")
         inner_toolbar.pack(fill=tk.X, padx=10, pady=8)
 
         # File operations section
-        file_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        file_frame = ctk.CTkFrame(inner_toolbar, fg_color="transparent")
         file_frame.pack(side=tk.LEFT, padx=5)
         
-        btn_open_files = self._create_toolbar_button(file_frame, "📁 Abrir archivos", self._open_files, 
-                                    bg=self.colors['primary'], fg='white')
+        btn_open_files = ctk.CTkButton(file_frame, text="📁 Abrir archivos", command=self._open_files,
+                                       width=140, height=32)
         btn_open_files.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_open_files, "Seleccionar archivos CBZ/CBR individuales")
         
-        btn_open_dir = self._create_toolbar_button(file_frame, "📂 Abrir carpeta", self._open_directory,
-                                    bg=self.colors['primary'], fg='white')
+        btn_open_dir = ctk.CTkButton(file_frame, text="📂 Abrir carpeta", command=self._open_directory,
+                                     width=140, height=32)
         btn_open_dir.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_open_dir, "Buscar archivos CBZ/CBR en una carpeta")
 
         # Separator
-        tk.Frame(inner_toolbar, width=2, bg=self.colors['border'], height=35).pack(side=tk.LEFT, padx=10)
+        ctk.CTkFrame(inner_toolbar, width=2, height=35, fg_color="gray70").pack(side=tk.LEFT, padx=10)
 
         # Processing section
-        process_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        process_frame = ctk.CTkFrame(inner_toolbar, fg_color="transparent")
         process_frame.pack(side=tk.LEFT, padx=5)
         
-        btn_process_sel = self._create_toolbar_button(process_frame, "▶ Procesar seleccionados", self._process_selected,
-                                    bg=self.colors['success'], fg='white')
+        btn_process_sel = ctk.CTkButton(process_frame, text="▶ Procesar seleccionados", 
+                                        command=self._process_selected,
+                                        width=180, height=32, fg_color="green", hover_color="darkgreen")
         btn_process_sel.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_process_sel, "Buscar y aplicar metadatos a los cómics seleccionados")
         
-        btn_process_all = self._create_toolbar_button(process_frame, "▶▶ Procesar todos", self._process_all,
-                                    bg=self.colors['success'], fg='white')
+        btn_process_all = ctk.CTkButton(process_frame, text="▶▶ Procesar todos", 
+                                       command=self._process_all,
+                                       width=140, height=32, fg_color="green", hover_color="darkgreen")
         btn_process_all.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_process_all, "Buscar y aplicar metadatos a todos los cómics de la lista")
 
         # Separator
-        tk.Frame(inner_toolbar, width=2, bg=self.colors['border'], height=35).pack(side=tk.LEFT, padx=10)
+        ctk.CTkFrame(inner_toolbar, width=2, height=35, fg_color="gray70").pack(side=tk.LEFT, padx=10)
 
         # Options section
-        options_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        options_frame = ctk.CTkFrame(inner_toolbar, fg_color="transparent")
         options_frame.pack(side=tk.LEFT, padx=5)
         
         self.recursive_var = tk.BooleanVar(value=True)
-        cb = tk.Checkbutton(options_frame, text="📂 Incluir subdirectorios", variable=self.recursive_var,
-                          bg=self.colors['toolbar_bg'], fg=self.colors['text_dark'],
-                          font=('Arial', 9), selectcolor='white', activebackground=self.colors['toolbar_bg'])
+        cb = ctk.CTkCheckBox(options_frame, text="📂 Incluir subdirectorios", 
+                            variable=self.recursive_var)
         cb.pack(side=tk.LEFT, padx=5)
         ToolTip(cb, "Buscar archivos en subdirectorios al abrir una carpeta")
-    
-    def _create_toolbar_button(self, parent, text, command, bg='#3498db', fg='white'):
-        '''Create a styled toolbar button with hover effect'''
-        btn = tk.Button(parent, text=text, command=command,
-                       bg=bg, fg=fg, font=('Arial', 9, 'bold'),
-                       relief=tk.FLAT, bd=0, padx=12, pady=6,
-                       cursor='hand2', activebackground=self.colors['primary_hover'],
-                       activeforeground='white')
-        
-        # Add hover effect
-        def on_enter(e):
-            if bg == self.colors['primary']:
-                btn['bg'] = self.colors['primary_hover']
-            elif bg == self.colors['success']:
-                btn['bg'] = '#229954'
-        
-        def on_leave(e):
-            btn['bg'] = bg
-        
-        btn.bind('<Enter>', on_enter)
-        btn.bind('<Leave>', on_leave)
-        
-        return btn
 
     def _create_main_panel(self):
         '''Create main content area'''
@@ -957,25 +938,16 @@ class TebeoSferaGUI(tk.Tk):
 
     def _create_status_bar(self):
         '''Create status bar'''
-        status_container = tk.Frame(self, bg=self.colors['toolbar_bg'], bd=0)
+        status_container = ctk.CTkFrame(self, corner_radius=0)
         status_container.pack(side=tk.BOTTOM, fill=tk.X)
         
-        self.status_bar = tk.Label(status_container, text="✓ Listo", 
-                                   bd=0, relief=tk.FLAT, anchor=tk.W,
-                                   bg=self.colors['toolbar_bg'],
-                                   fg=self.colors['text_dark'],
-                                   font=('Arial', 9), padx=10, pady=6)
+        self.status_bar = ctk.CTkLabel(status_container, text="✓ Listo", 
+                                       anchor="w",
+                                       padx=10, pady=6)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # Progress bar with better styling
-        self.progress = ttk.Progressbar(status_container, orient=tk.HORIZONTAL, mode='determinate')
-        # Style the progress bar
-        style = ttk.Style()
-        style.theme_use('default')
-        style.configure("TProgressbar", 
-                       thickness=20,
-                       troughcolor=self.colors['border'],
-                       background=self.colors['primary'])
+        # Progress bar using customtkinter
+        self.progress = ctk.CTkProgressBar(status_container, orientation="horizontal", mode='determinate')
         # Initially hidden
 
     def _open_files(self):
