@@ -1630,19 +1630,17 @@ class TebeoSferaGUI(ctk.CTk):
                 messagebox.showerror("Error", f"Error guardando log:\n{str(e)}")
 
 
-class SearchDialog(tk.Toplevel):
+class SearchDialog(ctk.CTkToplevel):
     '''Dialog for searching and selecting issues from TebeoSfera'''
 
     def __init__(self, parent, comic, db):
-        tk.Toplevel.__init__(self, parent)
+        ctk.CTkToplevel.__init__(self, parent)
 
         # Color scheme (inherit from parent if available)
         if hasattr(parent, 'colors'):
             self.colors = parent.colors.copy()
         else:
             self.colors = DEFAULT_COLORS.copy()
-        
-        self.configure(bg=self.colors['bg'])
 
         truncated_filename = (comic.filename[:MAX_FILENAME_LENGTH] + '...' 
                              if len(comic.filename) > MAX_FILENAME_LENGTH 
@@ -1674,31 +1672,23 @@ class SearchDialog(tk.Toplevel):
     def _create_ui(self):
         '''Create search dialog UI with improved styling'''
         # Search frame with card styling
-        search_container = tk.Frame(self, bg=self.colors['bg'])
+        search_container = ctk.CTkFrame(self, fg_color="transparent")
         search_container.pack(fill=tk.X, padx=10, pady=10)
         
-        search_card = tk.Frame(search_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        search_card = ctk.CTkFrame(search_container)
         search_card.pack(fill=tk.X)
         
-        search_frame = tk.Frame(search_card, bg=self.colors['card_bg'])
+        search_frame = ctk.CTkFrame(search_card, fg_color="transparent")
         search_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        tk.Label(search_frame, text="🔎 Buscar:", font=('Arial', 10, 'bold'),
-                bg=self.colors['card_bg'], fg=self.colors['text_dark']).pack(side=tk.LEFT, padx=(0, 10))
+        ctk.CTkLabel(search_frame, text="🔎 Buscar:", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=(0, 10))
         
-        self.search_entry = tk.Entry(search_frame, font=('Arial', 10),
-                                     relief=tk.FLAT, bd=1,
-                                     highlightthickness=1,
-                                     highlightbackground=self.colors['border'],
-                                     highlightcolor=self.colors['primary'])
-        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=6)
+        self.search_entry = ctk.CTkEntry(search_frame, height=35)
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.search_entry.bind('<Return>', lambda e: self._search())
 
-        search_btn = tk.Button(search_frame, text="🔍 Buscar", command=self._search,
-                              bg=self.colors['primary'], fg='white',
-                              font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                              padx=15, pady=8, cursor='hand2',
-                              activebackground=self.colors['primary_hover'])
+        search_btn = ctk.CTkButton(search_frame, text="🔍 Buscar", command=self._search,
+                              width=120, height=35)
         search_btn.pack(side=tk.LEFT, padx=(5, 0))
 
         # Main panel - split between results and preview
@@ -1818,14 +1808,13 @@ class SearchDialog(tk.Toplevel):
         self.preview_label = tk.Label(self.preview_canvas)  # Dummy label for image reference
         
         # Preview actions (browser button)
-        preview_actions = tk.Frame(cover_container, bg=self.colors['card_bg'])
+        preview_actions = ctk.CTkFrame(cover_container, fg_color="transparent")
         preview_actions.pack(fill=tk.X)
 
-        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir en navegador",
+        self.open_series_button = ctk.CTkButton(preview_actions, text="🌐 Abrir en navegador",
                                            command=self._open_selected_series, state=tk.DISABLED,
-                                           bg=self.colors['warning'], fg='white',
-                                           font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
-                                           padx=10, pady=6, cursor='hand2')
+                                           fg_color="orange", hover_color="darkorange",
+                                           height=32)
         self.open_series_button.pack(fill=tk.X)
         
         # Right: Metadata display
@@ -1840,23 +1829,20 @@ class SearchDialog(tk.Toplevel):
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Toggle buttons for metadata view
-        toggle_frame = tk.Frame(metadata_header, bg=self.colors['card_bg'])
+        toggle_frame = ctk.CTkFrame(metadata_header, fg_color="transparent")
         toggle_frame.pack(side=tk.RIGHT)
         
         self.metadata_view_mode = tk.StringVar(value='pretty')
         
-        self.metadata_pretty_button = tk.Button(toggle_frame, text="Bonito",
+        self.metadata_pretty_button = ctk.CTkButton(toggle_frame, text="Bonito",
                                                command=lambda: self._toggle_metadata_view(),
-                                               bg=self.colors['primary'], fg='white',
-                                               relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                               font=('Arial', 8, 'bold'), cursor='hand2')
+                                               width=60, height=24)
         self.metadata_pretty_button.pack(side=tk.LEFT, padx=(0, 3))
         
-        self.metadata_xml_button = tk.Button(toggle_frame, text="XML",
+        self.metadata_xml_button = ctk.CTkButton(toggle_frame, text="XML",
                                             command=lambda: self._toggle_metadata_view(),
-                                            bg=self.colors['secondary'], fg='white',
-                                            relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                            font=('Arial', 8, 'bold'), cursor='hand2')
+                                            width=50, height=24,
+                                            fg_color="gray50", hover_color="gray60")
         self.metadata_xml_button.pack(side=tk.LEFT)
         
         # Metadata display with scrollbar
@@ -1888,39 +1874,33 @@ class SearchDialog(tk.Toplevel):
         
         tk.Frame(apply_container, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
         
-        self.apply_xml_button = tk.Button(apply_container, text="💾 Aplicar ComicInfo.xml al archivo", 
+        self.apply_xml_button = ctk.CTkButton(apply_container, text="💾 Aplicar ComicInfo.xml al archivo", 
                                           command=self._apply_comicinfo_xml, state=tk.DISABLED,
-                                          bg=self.colors['success'], fg='white',
-                                          font=('Arial', 10, 'bold'), relief=tk.FLAT, bd=0,
-                                          padx=15, pady=12, cursor='hand2',
-                                          activebackground='#229954')
+                                          fg_color="green", hover_color="darkgreen",
+                                          height=40)
         self.apply_xml_button.pack(fill=tk.X)
 
         # Bottom button frame with card styling
-        button_container = tk.Frame(self, bg=self.colors['bg'])
+        button_container = ctk.CTkFrame(self, fg_color="transparent")
         button_container.pack(fill=tk.X, padx=10, pady=(0, 10))
         
-        button_card = tk.Frame(button_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        button_card = ctk.CTkFrame(button_container)
         button_card.pack(fill=tk.X)
         
-        button_frame = tk.Frame(button_card, bg=self.colors['card_bg'])
+        button_frame = ctk.CTkFrame(button_card, fg_color="transparent")
         button_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        close_btn = tk.Button(button_frame, text="✗ Cerrar", command=self.destroy,
-                             bg=self.colors['secondary'], fg='white',
-                             font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                             padx=20, pady=8, cursor='hand2',
-                             activebackground=self.colors['text_light'])
+        close_btn = ctk.CTkButton(button_frame, text="✗ Cerrar", command=self.destroy,
+                             width=100, height=35,
+                             fg_color="gray50", hover_color="gray60")
         close_btn.pack(side=tk.RIGHT)
 
         # Status label with better styling
-        status_container = tk.Frame(self, bg=self.colors['toolbar_bg'])
+        status_container = ctk.CTkFrame(self, corner_radius=0)
         status_container.pack(fill=tk.X, side=tk.BOTTOM)
         
-        self.status_label = tk.Label(status_container, text="", 
-                                     bg=self.colors['toolbar_bg'],
-                                     fg=self.colors['text_dark'],
-                                     font=('Arial', 9), anchor=tk.W,
+        self.status_label = ctk.CTkLabel(status_container, text="", 
+                                     anchor="w",
                                      padx=15, pady=8)
         self.status_label.pack(fill=tk.X)
         self._update_open_buttons()
@@ -2747,13 +2727,13 @@ class SearchDialog(tk.Toplevel):
         new_mode = 'xml' if current == 'pretty' else 'pretty'
         self.metadata_view_mode.set(new_mode)
         
-        # Update button styles
+        # Update button styles for customtkinter
         if new_mode == 'xml':
-            self.metadata_xml_button.config(bg=self.colors['primary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['secondary'], fg='white')
+            self.metadata_xml_button.configure(fg_color=("gray75", "#3B8ED0"))  # CTk default blue
+            self.metadata_pretty_button.configure(fg_color="gray50")
         else:
-            self.metadata_xml_button.config(bg=self.colors['secondary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['primary'], fg='white')
+            self.metadata_xml_button.configure(fg_color="gray50")
+            self.metadata_pretty_button.configure(fg_color=("gray75", "#3B8ED0"))
         
         # Update display
         self.metadata_display.config(state=tk.NORMAL)
