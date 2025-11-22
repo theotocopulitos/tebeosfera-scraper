@@ -472,11 +472,11 @@ class TebeoSferaGUI(ctk.CTk):
     '''Main GUI application window'''
 
     def __init__(self):
-        ctk.CTk.__init__(self)
-        
-        # Set customtkinter appearance mode and color theme
+        # Set customtkinter appearance mode and color theme BEFORE creating window
         ctk.set_appearance_mode("light")  # Modes: "System" (default), "Dark", "Light"
         ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
+        
+        ctk.CTk.__init__(self)
 
         self.title("TebeoSfera Scraper - Comic Metadata Editor")
         self.geometry("1280x850")
