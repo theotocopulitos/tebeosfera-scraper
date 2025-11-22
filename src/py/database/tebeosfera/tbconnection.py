@@ -249,14 +249,14 @@ class TebeoSferaConnection(object):
         except Exception as e:
             log.debug("Error fetching sagas via AJAX: {0}".format(sstr(e)))
         
-        # Search in numbers (issues) using T3_numeros table
+        # Search in numbers (issues) using megaAjax.php endpoint (finds all 56 issues vs 52 with buscador_txt_post.php)
         try:
             numbers_data = urllib.parse.urlencode({
-                'tabla': 'T3_numeros',
+                'action': 'buscador_simple_numeros',
                 'busqueda': original_query
             }).encode('utf-8')
             
-            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
             request = urllib.request.Request(numbers_url, data=numbers_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
@@ -284,17 +284,14 @@ class TebeoSferaConnection(object):
                 # Add section header for numbers
                 numbers_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Números</div>\n' + numbers_html
                 all_results_html.append(numbers_with_header)
-                from utils_compat import log
                 log.debug("Numbers AJAX returned {0} bytes".format(len(numbers_html)))
         except Exception as e:
-            from utils_compat import log
             log.debug("Error fetching numbers via AJAX: {0}".format(sstr(e)))
         
         # Combine all results into a single HTML string
         # Section headers are already added to each chunk
         if all_results_html:
             combined_html = '\n'.join(all_results_html)
-            from utils_compat import log
             log.debug("Combined AJAX results: {0} bytes".format(len(combined_html)))
             return combined_html
         
