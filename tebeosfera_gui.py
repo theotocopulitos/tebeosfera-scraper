@@ -569,10 +569,10 @@ class TebeoSferaGUI(tk.Tk):
         
         # Bind keyboard shortcuts
         self.bind_all("<Control-o>", lambda e: self._open_files())
-        self.bind_all("<Control-Shift-o>", lambda e: self._open_directory())
+        self.bind_all("<Control-Shift-O>", lambda e: self._open_directory())
         self.bind_all("<Control-q>", lambda e: self._on_close())
         self.bind_all("<Control-p>", lambda e: self._process_selected())
-        self.bind_all("<Control-Shift-p>", lambda e: self._process_all())
+        self.bind_all("<Control-Shift-P>", lambda e: self._process_all())
         self.bind_all("<Control-l>", lambda e: self._clear_list())
         self.bind_all("<F1>", lambda e: self._show_about())
         
@@ -1647,7 +1647,7 @@ class TebeoSferaGUI(tk.Tk):
             "Ayuda:\n"
             "  F1 - Acerca de\n\n"
             "Navegación:\n"
-            "  ← → - Cambiar entre comics\n"
+            "  ← → - Navegar entre páginas del cómic\n"
             "  Enter - Buscar en TebeoSfera (en diálogo de búsqueda)"
         )
         messagebox.showinfo("Atajos de Teclado", shortcuts_text)
