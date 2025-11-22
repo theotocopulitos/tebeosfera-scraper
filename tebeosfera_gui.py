@@ -893,41 +893,28 @@ class TebeoSferaGUI(tk.Tk):
         
         # ========== PANEL INFERIOR: DETALLES + LOG (horizontal) ==========
         bottom_panel = tk.Frame(paned, bg=self.colors['bg'])
-        paned.add(bottom_panel, minsize=180)
+        paned.add(bottom_panel, minsize=140)  # Reduced from 180 since details is now compact
         
         # Container for bottom panels with card styling
         bottom_container = tk.Frame(bottom_panel, bg=self.colors['bg'])
         bottom_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # Detalles section (card)
+        # Detalles section (card) - compact single line
         details_card = tk.Frame(bottom_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
-        details_card.pack(side=tk.TOP, fill=tk.BOTH, expand=False, pady=(0, 10))
+        details_card.pack(side=tk.TOP, fill=tk.X, expand=False, pady=(0, 10))
         
-        # Details header
-        details_header = tk.Frame(details_card, bg=self.colors['card_bg'])
-        details_header.pack(fill=tk.X, padx=15, pady=(15, 8))
+        # Details in a single line
+        details_frame = tk.Frame(details_card, bg=self.colors['card_bg'])
+        details_frame.pack(fill=tk.X, padx=15, pady=10)
         
-        tk.Label(details_header, text="📋 Detalles del archivo", 
+        tk.Label(details_frame, text="📋", 
                 font=('Arial', 10, 'bold'), bg=self.colors['card_bg'],
-                fg=self.colors['text_dark']).pack(anchor=tk.W)
+                fg=self.colors['text_dark']).pack(side=tk.LEFT, padx=(0, 5))
         
-        tk.Frame(details_card, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
-
-        details_text_frame = tk.Frame(details_card, bg=self.colors['card_bg'])
-        details_text_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
-        
-        self.details_text = tk.Text(details_text_frame, height=4, wrap=tk.WORD,
-                                   font=('Arial', 9), bg='white',
-                                   fg=self.colors['text_dark'],
-                                   relief=tk.FLAT, bd=1,
-                                   highlightthickness=1,
-                                   highlightbackground=self.colors['border'],
-                                   highlightcolor=self.colors['primary'],
-                                   padx=8, pady=8)
-        details_scrollbar = tk.Scrollbar(details_text_frame, command=self.details_text.yview, width=12)
-        self.details_text.config(yscrollcommand=details_scrollbar.set)
-        details_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.details_label = tk.Label(details_frame, text="Selecciona un archivo para ver detalles",
+                                      font=('Arial', 9), bg=self.colors['card_bg'],
+                                      fg=self.colors['text_dark'], anchor=tk.W)
+        self.details_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         # Log section (card)
         log_card = tk.Frame(bottom_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
@@ -1091,19 +1078,18 @@ class TebeoSferaGUI(tk.Tk):
         # Display existing metadata from file
         self._display_existing_metadata(comic)
 
-        # Show details
-        details = "Archivo: {0}\n".format(comic.filename)
-        details += "Ruta: {0}\n".format(comic.filepath)
-        details += "Páginas: {0}\n".format(comic.total_pages)
-        details += "Estado: {0}\n".format(comic.status)
-
+        # Show details in compact single line format
+        details_parts = []
+        details_parts.append(f"📄 {comic.filename}")
+        details_parts.append(f"📊 {comic.total_pages} pág.")
+        details_parts.append(f"🏷️ {comic.status}")
+        
         if comic.metadata:
-            details += "\nMetadatos encontrados:\n"
-            details += "Serie: {0}\n".format(comic.metadata.get('series', 'N/A'))
-            details += "Número: {0}\n".format(comic.metadata.get('number', 'N/A'))
-
-        self.details_text.delete('1.0', tk.END)
-        self.details_text.insert('1.0', details)
+            series = comic.metadata.get('series', 'N/A')
+            number = comic.metadata.get('number', 'N/A')
+            details_parts.append(f"📚 {series} #{number}")
+        
+        self.details_label.config(text=" • ".join(details_parts))
     
     def _display_existing_metadata(self, comic):
         '''Display existing ComicInfo.xml metadata from the comic file'''
