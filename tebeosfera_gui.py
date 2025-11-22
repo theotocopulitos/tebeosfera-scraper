@@ -28,6 +28,28 @@ from time import strftime
 
 TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
 
+# UI Constants
+MAX_FILENAME_LENGTH = 60  # Maximum characters for filename display in dialogs
+
+# Default color scheme for the application
+DEFAULT_COLORS = {
+    'bg': '#f5f5f5',
+    'fg': '#2c3e50',
+    'primary': '#3498db',
+    'primary_hover': '#2980b9',
+    'success': '#27ae60',
+    'success_hover': '#229954',
+    'danger': '#e74c3c',
+    'warning': '#f39c12',
+    'warning_hover': '#d68910',
+    'secondary': '#95a5a6',
+    'border': '#bdc3c7',
+    'card_bg': '#ffffff',
+    'toolbar_bg': '#ecf0f1',
+    'text_dark': '#2c3e50',
+    'text_light': '#7f8c8d'
+}
+
 
 def build_series_url(series_key_or_path):
     """Build absolute URL for a series."""
@@ -104,6 +126,56 @@ except ImportError as e:
 
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
 SEARCH_PREVIEW_SIZE = (460, 690)
+
+
+class ToolTip(object):
+    '''Create a tooltip for a given widget'''
+    def __init__(self, widget, text='widget info'):
+        self.widget = widget
+        self.text = text
+        self.tipwindow = None
+        self.id = None
+        self.x = self.y = 0
+        widget.bind('<Enter>', self.enter)
+        widget.bind('<Leave>', self.leave)
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(800, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        if self.tipwindow or not self.text:
+            return
+        # Position tooltip near the widget (bottom-right)
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry("+%d+%d" % (x, y))
+        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                        background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                        font=("Arial", 9, "normal"), padx=8, pady=6)
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tipwindow
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
+
 
 try:
     from database.tebeosfera.tbdb import TebeoSferaDB
@@ -392,7 +464,13 @@ class TebeoSferaGUI(tk.Tk):
         tk.Tk.__init__(self)
 
         self.title("TebeoSfera Scraper - Comic Metadata Editor")
-        self.geometry("1200x800")
+        self.geometry("1280x850")
+        
+        # Use default color scheme
+        self.colors = DEFAULT_COLORS.copy()
+        
+        # Configure main window style
+        self.configure(bg=self.colors['bg'])
 
         # Comic files list
         self.comic_files = []
@@ -488,114 +566,264 @@ class TebeoSferaGUI(tk.Tk):
 
     def _create_toolbar(self):
         '''Create toolbar with quick actions'''
-        toolbar = tk.Frame(self, bd=1, relief=tk.RAISED)
-        toolbar.pack(side=tk.TOP, fill=tk.X)
+        toolbar = tk.Frame(self, bg=self.colors['toolbar_bg'], bd=0, relief=tk.FLAT, height=50)
+        toolbar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
+        
+        # Add padding inside toolbar
+        inner_toolbar = tk.Frame(toolbar, bg=self.colors['toolbar_bg'])
+        inner_toolbar.pack(fill=tk.X, padx=10, pady=8)
 
-        tk.Button(toolbar, text="📁 Abrir archivos", command=self._open_files).pack(side=tk.LEFT, padx=2, pady=2)
-        tk.Button(toolbar, text="📂 Abrir carpeta", command=self._open_directory).pack(side=tk.LEFT, padx=2, pady=2)
+        # File operations section
+        file_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        file_frame.pack(side=tk.LEFT, padx=5)
+        
+        btn_open_files = self._create_toolbar_button(file_frame, "📁 Abrir archivos", self._open_files, 
+                                    bg=self.colors['primary'], fg='white')
+        btn_open_files.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_open_files, "Seleccionar archivos CBZ/CBR individuales")
+        
+        btn_open_dir = self._create_toolbar_button(file_frame, "📂 Abrir carpeta", self._open_directory,
+                                    bg=self.colors['primary'], fg='white')
+        btn_open_dir.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_open_dir, "Buscar archivos CBZ/CBR en una carpeta")
 
-        tk.Frame(toolbar, width=20).pack(side=tk.LEFT)  # Spacer
+        # Separator
+        tk.Frame(inner_toolbar, width=2, bg=self.colors['border'], height=35).pack(side=tk.LEFT, padx=10)
 
-        tk.Button(toolbar, text="▶ Procesar seleccionados", command=self._process_selected).pack(side=tk.LEFT, padx=2, pady=2)
-        tk.Button(toolbar, text="▶▶ Procesar todos", command=self._process_all).pack(side=tk.LEFT, padx=2, pady=2)
+        # Processing section
+        process_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        process_frame.pack(side=tk.LEFT, padx=5)
+        
+        btn_process_sel = self._create_toolbar_button(process_frame, "▶ Procesar seleccionados", self._process_selected,
+                                    bg=self.colors['success'], fg='white')
+        btn_process_sel.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_process_sel, "Buscar y aplicar metadatos a los cómics seleccionados")
+        
+        btn_process_all = self._create_toolbar_button(process_frame, "▶▶ Procesar todos", self._process_all,
+                                    bg=self.colors['success'], fg='white')
+        btn_process_all.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_process_all, "Buscar y aplicar metadatos a todos los cómics de la lista")
 
-        tk.Frame(toolbar, width=20).pack(side=tk.LEFT)  # Spacer
+        # Separator
+        tk.Frame(inner_toolbar, width=2, bg=self.colors['border'], height=35).pack(side=tk.LEFT, padx=10)
 
+        # Options section
+        options_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        options_frame.pack(side=tk.LEFT, padx=5)
+        
         self.recursive_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(toolbar, text="Subdirectorios", variable=self.recursive_var).pack(side=tk.LEFT, padx=2, pady=2)
+        cb = tk.Checkbutton(options_frame, text="📂 Incluir subdirectorios", variable=self.recursive_var,
+                          bg=self.colors['toolbar_bg'], fg=self.colors['text_dark'],
+                          font=('Arial', 9), selectcolor='white', activebackground=self.colors['toolbar_bg'])
+        cb.pack(side=tk.LEFT, padx=5)
+        ToolTip(cb, "Buscar archivos en subdirectorios al abrir una carpeta")
+    
+    def _create_toolbar_button(self, parent, text, command, bg='#3498db', fg='white'):
+        '''Create a styled toolbar button with hover effect'''
+        btn = tk.Button(parent, text=text, command=command,
+                       bg=bg, fg=fg, font=('Arial', 9, 'bold'),
+                       relief=tk.FLAT, bd=0, padx=12, pady=6,
+                       cursor='hand2', activebackground=self.colors['primary_hover'],
+                       activeforeground='white')
+        
+        # Add hover effect
+        def on_enter(e):
+            if bg == self.colors['primary']:
+                btn['bg'] = self.colors['primary_hover']
+            elif bg == self.colors['success']:
+                btn['bg'] = '#229954'
+        
+        def on_leave(e):
+            btn['bg'] = bg
+        
+        btn.bind('<Enter>', on_enter)
+        btn.bind('<Leave>', on_leave)
+        
+        return btn
 
     def _create_main_panel(self):
         '''Create main content area'''
+        # Main container with better styling
+        main_container = tk.Frame(self, bg=self.colors['bg'])
+        main_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        
         # Main container with panedwindow for resizable split
-        paned = tk.PanedWindow(self, orient=tk.VERTICAL, sashrelief=tk.RAISED)
+        paned = tk.PanedWindow(main_container, orient=tk.VERTICAL, 
+                              sashrelief=tk.FLAT, bg=self.colors['bg'],
+                              bd=0, sashwidth=6)
         paned.pack(fill=tk.BOTH, expand=True)
         
         # Top panel - Main content
-        top_paned = tk.PanedWindow(paned, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        paned.add(top_paned, minsize=400)
+        top_paned = tk.PanedWindow(paned, orient=tk.HORIZONTAL, 
+                                  sashrelief=tk.FLAT, bg=self.colors['bg'],
+                                  bd=0, sashwidth=6)
+        paned.add(top_paned, minsize=450)
 
-        # Left panel - File list
-        left_frame = tk.Frame(top_paned)
-        top_paned.add(left_frame, minsize=300)
+        # Left panel - File list (with card styling)
+        left_container = tk.Frame(top_paned, bg=self.colors['bg'])
+        top_paned.add(left_container, minsize=320)
+        
+        left_frame = tk.Frame(left_container, bg=self.colors['card_bg'], 
+                             relief=tk.FLAT, bd=0)
+        left_frame.pack(fill=tk.BOTH, expand=True, padx=(10, 5), pady=10)
 
-        tk.Label(left_frame, text="Comics encontrados:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
+        # Header with improved styling
+        header_frame = tk.Frame(left_frame, bg=self.colors['card_bg'])
+        header_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
+        
+        tk.Label(header_frame, text="📚 Comics encontrados", 
+                font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(anchor=tk.W)
+        
+        # Subtle separator line
+        tk.Frame(left_frame, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
 
-        # Listbox with scrollbar
-        list_frame = tk.Frame(left_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Listbox with better styling
+        list_frame = tk.Frame(left_frame, bg=self.colors['card_bg'])
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
 
-        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar = tk.Scrollbar(list_frame, width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.file_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, selectmode=tk.EXTENDED)
+        self.file_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, 
+                                       selectmode=tk.EXTENDED,
+                                       font=('Arial', 9), bg='white',
+                                       fg=self.colors['text_dark'],
+                                       selectbackground=self.colors['primary'],
+                                       selectforeground='white',
+                                       relief=tk.FLAT, bd=1,
+                                       highlightthickness=1,
+                                       highlightbackground=self.colors['border'],
+                                       highlightcolor=self.colors['primary'])
         self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.file_listbox.bind('<<ListboxSelect>>', self._on_file_select)
 
         scrollbar.config(command=self.file_listbox.yview)
 
-        # Right panel - Preview and details (REORGANIZADO COMPLETAMENTE)
-        right_frame = tk.Frame(top_paned)
-        top_paned.add(right_frame, minsize=400)
+        # Right panel - Preview and details (card styling)
+        right_container = tk.Frame(top_paned, bg=self.colors['bg'])
+        top_paned.add(right_container, minsize=520)  # Increased to ensure action buttons don't get cut off
+        
+        right_frame = tk.Frame(right_container, bg=self.colors['card_bg'],
+                              relief=tk.FLAT, bd=0)
+        right_frame.pack(fill=tk.BOTH, expand=True, padx=(5, 10), pady=10)
 
         # ========== SECCIÓN 1: PORTADA + METADATOS (dividido verticalmente) ==========
-        preview_section = tk.Frame(right_frame)
-        preview_section.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        preview_section = tk.Frame(right_frame, bg=self.colors['card_bg'])
+        preview_section.pack(fill=tk.BOTH, expand=True, padx=15, pady=(15, 10))
         
-        tk.Label(preview_section, text="Vista previa:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
+        # Section header with navigation controls
+        header = tk.Frame(preview_section, bg=self.colors['card_bg'])
+        header.pack(fill=tk.X, pady=(0, 10))
+        
+        # Left side: title
+        tk.Label(header, text="🖼️ Vista previa y metadatos", 
+                font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(side=tk.LEFT)
+        
+        # Right side: page navigation controls
+        nav_controls = tk.Frame(header, bg=self.colors['card_bg'])
+        nav_controls.pack(side=tk.RIGHT)
+        
+        self.prev_page_button = tk.Button(nav_controls, text="◀",
+                                          command=self._show_prev_page, state=tk.DISABLED,
+                                          width=3, font=('Arial', 10, 'bold'),
+                                          bg=self.colors['secondary'], fg='white',
+                                          relief=tk.FLAT, bd=0, cursor='hand2',
+                                          activebackground=self.colors['text_light'])
+        self.prev_page_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.page_info_label = tk.Label(nav_controls, text="0/0", 
+                                       font=('Arial', 9, 'bold'), width=8,
+                                       bg=self.colors['card_bg'],
+                                       fg=self.colors['text_dark'])
+        self.page_info_label.pack(side=tk.LEFT, padx=5)
+        
+        self.next_page_button = tk.Button(nav_controls, text="▶",
+                                          command=self._show_next_page, state=tk.DISABLED,
+                                          width=3, font=('Arial', 10, 'bold'),
+                                          bg=self.colors['secondary'], fg='white',
+                                          relief=tk.FLAT, bd=0, cursor='hand2',
+                                          activebackground=self.colors['text_light'])
+        self.next_page_button.pack(side=tk.LEFT, padx=(5, 0))
+        
+        tk.Frame(preview_section, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
         
         # PanedWindow para dividir portada (izquierda) y metadatos (derecha)
-        preview_paned = tk.PanedWindow(preview_section, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        preview_paned.pack(fill=tk.BOTH, expand=True, pady=(0,5))
+        preview_paned = tk.PanedWindow(preview_section, orient=tk.HORIZONTAL, 
+                                      sashrelief=tk.FLAT, bg=self.colors['bg'],
+                                      bd=0, sashwidth=6)
+        preview_paned.pack(fill=tk.BOTH, expand=True)
         
         # ===== IZQUIERDA: PORTADA =====
-        cover_frame = tk.Frame(preview_paned, bg='gray80', relief=tk.SUNKEN, bd=2)
-        preview_paned.add(cover_frame, minsize=200)
+        cover_container = tk.Frame(preview_paned, bg=self.colors['card_bg'])
+        preview_paned.add(cover_container, minsize=220)
         
-        self.cover_canvas = tk.Canvas(cover_frame, bg='gray90', highlightthickness=0)
+        cover_frame = tk.Frame(cover_container, bg='#e8e8e8', relief=tk.FLAT, bd=1,
+                              highlightthickness=1, highlightbackground=self.colors['border'])
+        cover_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.cover_canvas = tk.Canvas(cover_frame, bg='#f8f8f8', highlightthickness=0)
         self.cover_canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Placeholder text
+        # Placeholder text with better styling
         self.cover_canvas.create_text(
             200, 300,
             text="Selecciona un comic\npara ver su portada",
-            font=('Arial', 12), fill='gray40', tags='placeholder'
+            font=('Arial', 11), fill=self.colors['text_light'], 
+            tags='placeholder', justify=tk.CENTER
         )
         
         # Keep a reference for the label (needed for image persistence)
         self.cover_label = tk.Label(self.cover_canvas)  # Dummy label for image reference
         
         # ===== DERECHA: METADATOS EXISTENTES =====
-        metadata_frame = tk.Frame(preview_paned)
-        preview_paned.add(metadata_frame, minsize=200)
+        metadata_container = tk.Frame(preview_paned, bg=self.colors['card_bg'])
+        preview_paned.add(metadata_container, minsize=220)
+        
+        metadata_frame = tk.Frame(metadata_container, bg=self.colors['card_bg'])
+        metadata_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Header con título y toggle XML/Bonito
-        metadata_header = tk.Frame(metadata_frame)
-        metadata_header.pack(fill=tk.X, padx=5, pady=5)
+        metadata_header = tk.Frame(metadata_frame, bg=self.colors['card_bg'])
+        metadata_header.pack(fill=tk.X, pady=(0, 8))
         
-        tk.Label(metadata_header, text="Metadatos en archivo:", font=('Arial', 9, 'bold')).pack(side=tk.LEFT)
+        tk.Label(metadata_header, text="📄 Metadatos del archivo", 
+                font=('Arial', 9, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         self.metadata_view_mode = tk.StringVar(value="pretty")  # "xml" or "pretty"
-        tk.Button(metadata_header, text="XML", command=lambda: self._toggle_metadata_view("xml"),
-                 width=6, relief=tk.RAISED).pack(side=tk.RIGHT, padx=2)
-        tk.Button(metadata_header, text="Bonito", command=lambda: self._toggle_metadata_view("pretty"),
-                 width=6, relief=tk.SUNKEN).pack(side=tk.RIGHT, padx=2)
         
-        # Store button references for styling
-        self.metadata_xml_button = None
-        self.metadata_pretty_button = None
-        # Get references after packing
-        for widget in metadata_header.winfo_children():
-            if isinstance(widget, tk.Button):
-                if widget['text'] == "XML":
-                    self.metadata_xml_button = widget
-                elif widget['text'] == "Bonito":
-                    self.metadata_pretty_button = widget
+        # Styled toggle buttons
+        toggle_frame = tk.Frame(metadata_header, bg=self.colors['card_bg'])
+        toggle_frame.pack(side=tk.RIGHT)
         
-        metadata_text_frame = tk.Frame(metadata_frame)
-        metadata_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.metadata_pretty_button = tk.Button(toggle_frame, text="Bonito", 
+                                               command=lambda: self._toggle_metadata_view("pretty"),
+                                               bg=self.colors['primary'], fg='white',
+                                               relief=tk.FLAT, bd=0, padx=8, pady=3,
+                                               font=('Arial', 8, 'bold'), cursor='hand2')
+        self.metadata_pretty_button.pack(side=tk.LEFT, padx=(0, 3))
         
-        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('Courier', 9))
-        metadata_scrollbar = tk.Scrollbar(metadata_text_frame, command=self.metadata_display.yview)
+        self.metadata_xml_button = tk.Button(toggle_frame, text="XML",
+                                            command=lambda: self._toggle_metadata_view("xml"),
+                                            bg=self.colors['secondary'], fg='white',
+                                            relief=tk.FLAT, bd=0, padx=8, pady=3,
+                                            font=('Arial', 8, 'bold'), cursor='hand2')
+        self.metadata_xml_button.pack(side=tk.LEFT)
+        
+        # Metadata text with better styling
+        metadata_text_frame = tk.Frame(metadata_frame, bg=self.colors['card_bg'])
+        metadata_text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('TkFixedFont', 9),
+                                       bg='white', fg=self.colors['text_dark'],
+                                       relief=tk.FLAT, bd=1,
+                                       highlightthickness=1,
+                                       highlightbackground=self.colors['border'],
+                                       highlightcolor=self.colors['primary'],
+                                       padx=8, pady=8)
+        metadata_scrollbar = tk.Scrollbar(metadata_text_frame, command=self.metadata_display.yview, width=12)
         self.metadata_display.config(yscrollcommand=metadata_scrollbar.set, state=tk.DISABLED)
         metadata_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.metadata_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -604,81 +832,120 @@ class TebeoSferaGUI(tk.Tk):
         self.current_metadata_xml = None
         self.current_metadata_dict = None
 
-        # ========== SECCIÓN 2: NAVEGACIÓN DE PÁGINAS ==========
-        page_nav_frame = tk.Frame(right_frame, relief=tk.GROOVE, bd=2)
-        page_nav_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        # Spacer to center the navigation controls
-        tk.Frame(page_nav_frame).pack(side=tk.LEFT, expand=True)
-        
-        self.prev_page_button = tk.Button(page_nav_frame, text="⬅",
-                                          command=self._show_prev_page, state=tk.DISABLED,
-                                          width=3, font=('Arial', 12, 'bold'))
-        self.prev_page_button.pack(side=tk.LEFT, padx=5, pady=5)
-        
-        self.page_info_label = tk.Label(page_nav_frame, text="0/0", 
-                                       font=('Arial', 11, 'bold'), width=10)
-        self.page_info_label.pack(side=tk.LEFT, padx=10, pady=5)
-        
-        self.next_page_button = tk.Button(page_nav_frame, text="➡",
-                                          command=self._show_next_page, state=tk.DISABLED,
-                                          width=3, font=('Arial', 12, 'bold'))
-        self.next_page_button.pack(side=tk.LEFT, padx=5, pady=5)
-        
-        # Spacer to center the navigation controls
-        tk.Frame(page_nav_frame).pack(side=tk.LEFT, expand=True)
-
         # ========== SECCIÓN 3: BOTONES DE ACCIÓN ==========
-        button_frame = tk.Frame(right_frame)
-        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        button_frame = tk.Frame(right_frame, bg=self.colors['card_bg'])
+        button_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
+        # Ensure buttons don't shrink below their natural size
+        button_frame.pack_propagate(False)
+        button_frame.config(height=50)
 
-        tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", command=self._search_current,
-                 height=2).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-        tk.Button(button_frame, text="💾 Generar ComicInfo.xml", command=self._generate_xml_current,
-                 height=2).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-        tk.Button(button_frame, text="🌐 Abrir en navegador", command=self._open_current_in_browser,
-                 height=2).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        # Create styled action buttons with minimum width
+        btn_search = tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", 
+                              command=self._search_current,
+                              bg=self.colors['primary'], fg='white',
+                              font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
+                              padx=10, pady=10, cursor='hand2',
+                              activebackground=self.colors['primary_hover'],
+                              wraplength=150)
+        btn_search.pack(side=tk.LEFT, padx=(0, 5), fill=tk.BOTH, expand=True)
+        ToolTip(btn_search, "Buscar metadatos en tebeosfera.com")
+        
+        btn_generate = tk.Button(button_frame, text="💾 Generar ComicInfo.xml", 
+                                command=self._generate_xml_current,
+                                bg=self.colors['success'], fg='white',
+                                font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
+                                padx=10, pady=10, cursor='hand2',
+                                activebackground='#229954',
+                                wraplength=150)
+        btn_generate.pack(side=tk.LEFT, padx=5, fill=tk.BOTH, expand=True)
+        ToolTip(btn_generate, "Generar e inyectar ComicInfo.xml en el archivo")
+        
+        btn_browser = tk.Button(button_frame, text="🌐 Abrir en navegador", 
+                               command=self._open_current_in_browser,
+                               bg=self.colors['warning'], fg='white',
+                               font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
+                               padx=10, pady=10, cursor='hand2',
+                               activebackground='#d68910',
+                               wraplength=150)
+        btn_browser.pack(side=tk.LEFT, padx=(5, 0), fill=tk.BOTH, expand=True)
+        ToolTip(btn_browser, "Abrir página de TebeoSfera en el navegador")
+        
+        # Add hover effects to action buttons
+        for btn, hover_color in [(btn_search, self.colors['primary_hover']),
+                                 (btn_generate, self.colors['success_hover']),
+                                 (btn_browser, self.colors['warning_hover'])]:
+            original_color = btn['bg']
+            btn.bind('<Enter>', lambda e, b=btn, c=hover_color: b.config(bg=c))
+            btn.bind('<Leave>', lambda e, b=btn, c=original_color: b.config(bg=c))
         
         # ========== PANEL INFERIOR: DETALLES + LOG (horizontal) ==========
-        bottom_panel = tk.Frame(paned)
-        paned.add(bottom_panel, minsize=150)
+        bottom_panel = tk.Frame(paned, bg=self.colors['bg'])
+        paned.add(bottom_panel, minsize=140)  # Reduced from 180 since details is now compact
         
-        # Detalles a la izquierda (ocupando todo el ancho disponible)
-        details_frame = tk.Frame(bottom_panel)
-        details_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=False, padx=5, pady=5)
-
-        tk.Label(details_frame, text="Detalles:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
-
-        details_text_frame = tk.Frame(details_frame)
-        details_text_frame.pack(fill=tk.BOTH, expand=True)
+        # Container for bottom panels with card styling
+        bottom_container = tk.Frame(bottom_panel, bg=self.colors['bg'])
+        bottom_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        self.details_text = tk.Text(details_text_frame, height=4, wrap=tk.WORD)
-        details_scrollbar = tk.Scrollbar(details_text_frame, command=self.details_text.yview)
-        self.details_text.config(yscrollcommand=details_scrollbar.set)
-        details_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Detalles section (card) - compact single line
+        details_card = tk.Frame(bottom_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        details_card.pack(side=tk.TOP, fill=tk.X, expand=False, pady=(0, 10))
         
-        # Log debajo de Detalles
-        log_frame = tk.Frame(bottom_panel)
-        log_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=(0,5))
+        # Details in a single line
+        details_frame = tk.Frame(details_card, bg=self.colors['card_bg'])
+        details_frame.pack(fill=tk.X, padx=15, pady=10)
         
-        log_header = tk.Frame(log_frame)
-        log_header.pack(fill=tk.X, padx=5, pady=(5, 0))
+        tk.Label(details_frame, text="📋", 
+                font=('Arial', 10, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(side=tk.LEFT, padx=(0, 5))
         
-        tk.Label(log_header, text="Log:", font=('Arial', 10, 'bold')).pack(side=tk.LEFT)
-        tk.Button(log_header, text="Limpiar", command=self._clear_log, width=8).pack(side=tk.RIGHT, padx=5)
-        tk.Button(log_header, text="Guardar", command=self._save_log, width=8).pack(side=tk.RIGHT, padx=5)
+        self.details_label = tk.Label(details_frame, text="Selecciona un archivo para ver detalles",
+                                      font=('Arial', 9), bg=self.colors['card_bg'],
+                                      fg=self.colors['text_dark'], anchor=tk.W)
+        self.details_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Log section (card)
+        log_card = tk.Frame(bottom_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        log_card.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        # Log header with actions
+        log_header = tk.Frame(log_card, bg=self.colors['card_bg'])
+        log_header.pack(fill=tk.X, padx=15, pady=(15, 8))
+        
+        tk.Label(log_header, text="📝 Registro de actividad", 
+                font=('Arial', 10, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(side=tk.LEFT)
+        
+        # Log action buttons
+        btn_frame = tk.Frame(log_header, bg=self.colors['card_bg'])
+        btn_frame.pack(side=tk.RIGHT)
+        
+        tk.Button(btn_frame, text="💾 Guardar", command=self._save_log,
+                 bg=self.colors['secondary'], fg='white',
+                 font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
+                 padx=8, pady=3, cursor='hand2').pack(side=tk.RIGHT, padx=(5, 0))
+        tk.Button(btn_frame, text="🗑️ Limpiar", command=self._clear_log,
+                 bg=self.colors['danger'], fg='white',
+                 font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
+                 padx=8, pady=3, cursor='hand2').pack(side=tk.RIGHT)
+        
+        tk.Frame(log_card, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
         
         # Log text area with scrollbar
-        log_text_frame = tk.Frame(log_frame)
-        log_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        log_text_frame = tk.Frame(log_card, bg=self.colors['card_bg'])
+        log_text_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
         
-        log_scrollbar = tk.Scrollbar(log_text_frame)
+        log_scrollbar = tk.Scrollbar(log_text_frame, width=12)
         log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         self.log_text = tk.Text(log_text_frame, height=8, wrap=tk.WORD, 
                                 yscrollcommand=log_scrollbar.set,
-                                font=('Consolas', 9), bg='#f5f5f5')
+                                font=('TkFixedFont', 9), bg='#fafafa',
+                                fg=self.colors['text_dark'],
+                                relief=tk.FLAT, bd=1,
+                                highlightthickness=1,
+                                highlightbackground=self.colors['border'],
+                                highlightcolor=self.colors['primary'],
+                                padx=8, pady=8)
         self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         log_scrollbar.config(command=self.log_text.yview)
         
@@ -686,15 +953,29 @@ class TebeoSferaGUI(tk.Tk):
         self.log_text.config(state=tk.DISABLED)
         
         # Initialize log
-        self._log("🚀 TebeoSfera Scraper iniciado")
+        self._log("🚀 TebeoSfera Scraper iniciado - Bienvenido")
 
     def _create_status_bar(self):
         '''Create status bar'''
-        self.status_bar = tk.Label(self, text="Listo", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        status_container = tk.Frame(self, bg=self.colors['toolbar_bg'], bd=0)
+        status_container.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        self.status_bar = tk.Label(status_container, text="✓ Listo", 
+                                   bd=0, relief=tk.FLAT, anchor=tk.W,
+                                   bg=self.colors['toolbar_bg'],
+                                   fg=self.colors['text_dark'],
+                                   font=('Arial', 9), padx=10, pady=6)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # Progress bar
-        self.progress = ttk.Progressbar(self, orient=tk.HORIZONTAL, mode='determinate')
+        # Progress bar with better styling
+        self.progress = ttk.Progressbar(status_container, orient=tk.HORIZONTAL, mode='determinate')
+        # Style the progress bar
+        style = ttk.Style()
+        style.theme_use('default')
+        style.configure("TProgressbar", 
+                       thickness=20,
+                       troughcolor=self.colors['border'],
+                       background=self.colors['primary'])
         # Initially hidden
 
     def _open_files(self):
@@ -784,19 +1065,18 @@ class TebeoSferaGUI(tk.Tk):
         # Display existing metadata from file
         self._display_existing_metadata(comic)
 
-        # Show details
-        details = "Archivo: {0}\n".format(comic.filename)
-        details += "Ruta: {0}\n".format(comic.filepath)
-        details += "Páginas: {0}\n".format(comic.total_pages)
-        details += "Estado: {0}\n".format(comic.status)
-
+        # Show details in compact single line format
+        details_parts = []
+        details_parts.append(f"📄 {comic.filename}")
+        details_parts.append(f"📊 {comic.total_pages} pág.")
+        details_parts.append(f"🏷️ {comic.status}")
+        
         if comic.metadata:
-            details += "\nMetadatos encontrados:\n"
-            details += "Serie: {0}\n".format(comic.metadata.get('series', 'N/A'))
-            details += "Número: {0}\n".format(comic.metadata.get('number', 'N/A'))
-
-        self.details_text.delete('1.0', tk.END)
-        self.details_text.insert('1.0', details)
+            series = comic.metadata.get('series', 'N/A')
+            number = comic.metadata.get('number', 'N/A')
+            details_parts.append(f"📚 {series} #{number}")
+        
+        self.details_label.config(text=" • ".join(details_parts))
     
     def _display_existing_metadata(self, comic):
         '''Display existing ComicInfo.xml metadata from the comic file'''
@@ -848,14 +1128,13 @@ class TebeoSferaGUI(tk.Tk):
         '''Toggle between XML and Pretty view'''
         self.metadata_view_mode.set(mode)
         
-        # Update button styles
-        if self.metadata_xml_button and self.metadata_pretty_button:
-            if mode == "xml":
-                self.metadata_xml_button.config(relief=tk.SUNKEN)
-                self.metadata_pretty_button.config(relief=tk.RAISED)
-            else:
-                self.metadata_xml_button.config(relief=tk.RAISED)
-                self.metadata_pretty_button.config(relief=tk.SUNKEN)
+        # Update button styles with new color scheme
+        if mode == "xml":
+            self.metadata_xml_button.config(bg=self.colors['primary'], fg='white')
+            self.metadata_pretty_button.config(bg=self.colors['secondary'], fg='white')
+        else:
+            self.metadata_xml_button.config(bg=self.colors['secondary'], fg='white')
+            self.metadata_pretty_button.config(bg=self.colors['primary'], fg='white')
         
         self._render_metadata_view()
     
@@ -1414,8 +1693,19 @@ class SearchDialog(tk.Toplevel):
     def __init__(self, parent, comic, db):
         tk.Toplevel.__init__(self, parent)
 
-        self.title("Buscar en TebeoSfera - {0}".format(comic.filename))
-        self.geometry("1400x750")
+        # Color scheme (inherit from parent if available)
+        if hasattr(parent, 'colors'):
+            self.colors = parent.colors.copy()
+        else:
+            self.colors = DEFAULT_COLORS.copy()
+        
+        self.configure(bg=self.colors['bg'])
+
+        truncated_filename = (comic.filename[:MAX_FILENAME_LENGTH] + '...' 
+                             if len(comic.filename) > MAX_FILENAME_LENGTH 
+                             else comic.filename)
+        self.title("🔍 Buscar en TebeoSfera - {0}".format(truncated_filename))
+        self.geometry("1400x800")
         self.transient(parent)
 
         self.parent = parent  # Store parent reference for logging
@@ -1439,37 +1729,86 @@ class SearchDialog(tk.Toplevel):
         self._auto_search()
 
     def _create_ui(self):
-        '''Create search dialog UI'''
-        # Search frame
-        search_frame = tk.Frame(self)
-        search_frame.pack(fill=tk.X, padx=10, pady=10)
+        '''Create search dialog UI with improved styling'''
+        # Search frame with card styling
+        search_container = tk.Frame(self, bg=self.colors['bg'])
+        search_container.pack(fill=tk.X, padx=10, pady=10)
+        
+        search_card = tk.Frame(search_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        search_card.pack(fill=tk.X)
+        
+        search_frame = tk.Frame(search_card, bg=self.colors['card_bg'])
+        search_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        tk.Label(search_frame, text="Buscar:").pack(side=tk.LEFT)
-        self.search_entry = tk.Entry(search_frame, width=50)
-        self.search_entry.pack(side=tk.LEFT, padx=5)
+        tk.Label(search_frame, text="🔎 Buscar:", font=('Arial', 10, 'bold'),
+                bg=self.colors['card_bg'], fg=self.colors['text_dark']).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.search_entry = tk.Entry(search_frame, font=('Arial', 10),
+                                     relief=tk.FLAT, bd=1,
+                                     highlightthickness=1,
+                                     highlightbackground=self.colors['border'],
+                                     highlightcolor=self.colors['primary'])
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=6)
         self.search_entry.bind('<Return>', lambda e: self._search())
 
-        tk.Button(search_frame, text="🔍 Buscar", command=self._search).pack(side=tk.LEFT)
+        search_btn = tk.Button(search_frame, text="🔍 Buscar", command=self._search,
+                              bg=self.colors['primary'], fg='white',
+                              font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
+                              padx=15, pady=8, cursor='hand2',
+                              activebackground=self.colors['primary_hover'])
+        search_btn.pack(side=tk.LEFT, padx=(5, 0))
 
         # Main panel - split between results and preview
-        main_paned = tk.PanedWindow(self, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_container = tk.Frame(self, bg=self.colors['bg'])
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        
+        main_paned = tk.PanedWindow(main_container, orient=tk.HORIZONTAL,
+                                   sashrelief=tk.FLAT, bg=self.colors['bg'],
+                                   bd=0, sashwidth=6)
+        main_paned.pack(fill=tk.BOTH, expand=True)
 
-        # Left: Results tree
-        left_frame = tk.Frame(main_paned)
-        main_paned.add(left_frame, minsize=400)
+        # Left: Results tree (card style)
+        left_container = tk.Frame(main_paned, bg=self.colors['bg'])
+        main_paned.add(left_container, minsize=420)
+        
+        left_frame = tk.Frame(left_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        left_frame.pack(fill=tk.BOTH, expand=True, padx=(0, 5))
 
-        self.results_label = tk.Label(left_frame, text="Resultados:", font=('Arial', 10, 'bold'))
+        results_header = tk.Frame(left_frame, bg=self.colors['card_bg'])
+        results_header.pack(fill=tk.X, padx=15, pady=(15, 10))
+        
+        self.results_label = tk.Label(results_header, text="📚 Resultados de búsqueda", 
+                                     font=('Arial', 11, 'bold'),
+                                     bg=self.colors['card_bg'],
+                                     fg=self.colors['text_dark'])
         self.results_label.pack(anchor=tk.W)
+        
+        tk.Frame(left_frame, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
 
         # Treeview for results (sagas/colecciones/issues)
-        tree_frame = tk.Frame(left_frame)
-        tree_frame.pack(fill=tk.BOTH, expand=True)
+        tree_frame = tk.Frame(left_frame, bg=self.colors['card_bg'])
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
 
-        scrollbar = tk.Scrollbar(tree_frame)
+        scrollbar = tk.Scrollbar(tree_frame, width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.results_tree = ttk.Treeview(tree_frame, yscrollcommand=scrollbar.set, show='tree')
+        # Style the treeview
+        style = ttk.Style()
+        style.configure("Search.Treeview",
+                       background="white",
+                       foreground=self.colors['text_dark'],
+                       fieldbackground="white",
+                       font=('Arial', 9))
+        style.configure("Search.Treeview.Heading",
+                       background=self.colors['toolbar_bg'],
+                       foreground=self.colors['text_dark'],
+                       font=('Arial', 9, 'bold'))
+        style.map("Search.Treeview",
+                 background=[('selected', self.colors['primary'])],
+                 foreground=[('selected', 'white')])
+        
+        self.results_tree = ttk.Treeview(tree_frame, yscrollcommand=scrollbar.set, 
+                                        show='tree', style="Search.Treeview")
         self.results_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.results_tree.bind('<<TreeviewSelect>>', self._on_tree_select)
         self.results_tree.bind('<Double-Button-1>', self._on_tree_double_click)
@@ -1482,70 +1821,117 @@ class SearchDialog(tk.Toplevel):
         # type can be: 'issue', 'collection', 'saga', 'issue_item'
         self.tree_item_data = {}
 
-        # Right: Preview panel (split: cover left, metadata right)
-        right_frame = tk.Frame(main_paned)
-        main_paned.add(right_frame, minsize=500)
+        # Right: Preview panel (card style)
+        right_container = tk.Frame(main_paned, bg=self.colors['bg'])
+        main_paned.add(right_container, minsize=550)
+        
+        right_frame = tk.Frame(right_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        right_frame.pack(fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        # Preview header
+        preview_header = tk.Frame(right_frame, bg=self.colors['card_bg'])
+        preview_header.pack(fill=tk.X, padx=15, pady=(15, 10))
+        
+        tk.Label(preview_header, text="🖼️ Vista previa y metadatos",
+                font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(anchor=tk.W)
+        
+        tk.Frame(right_frame, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
         
         # Split preview area horizontally
-        preview_paned = tk.PanedWindow(right_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        preview_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        preview_paned = tk.PanedWindow(right_frame, orient=tk.HORIZONTAL,
+                                      sashrelief=tk.FLAT, bg=self.colors['bg'],
+                                      bd=0, sashwidth=6)
+        preview_paned.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
         
         # Left: Cover preview
-        cover_frame = tk.Frame(preview_paned)
-        preview_paned.add(cover_frame, minsize=200)
+        cover_container = tk.Frame(preview_paned, bg=self.colors['card_bg'])
+        preview_paned.add(cover_container, minsize=240)
         
-        tk.Label(cover_frame, text="Portada:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
+        cover_label_frame = tk.Frame(cover_container, bg=self.colors['card_bg'])
+        cover_label_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        tk.Label(cover_label_frame, text="📷 Portada", 
+                font=('Arial', 9, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(anchor=tk.W)
         
         # Canvas para la imagen
-        preview_container = tk.Frame(cover_frame, bg='gray80', relief=tk.SUNKEN, bd=2)
-        preview_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        preview_container = tk.Frame(cover_container, bg='#e8e8e8', relief=tk.FLAT, bd=1,
+                                    highlightthickness=1, highlightbackground=self.colors['border'])
+        preview_container.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
         
-        self.preview_canvas = tk.Canvas(preview_container, bg='gray90', highlightthickness=0)
+        self.preview_canvas = tk.Canvas(preview_container, bg='#f8f8f8', highlightthickness=0)
         self.preview_canvas.pack(fill=tk.BOTH, expand=True)
         
         # Placeholder text
         self.preview_canvas.create_text(
             200, 300,
-            text="Selecciona un issue\npara ver su portada",
-            font=('Arial', 12), fill='gray40', tags='placeholder'
+            text="Selecciona un resultado\npara ver su portada",
+            font=('Arial', 11), fill=self.colors['text_light'],
+            tags='placeholder', justify=tk.CENTER
         )
         
         # Keep a reference for the label (needed for image persistence)
         self.preview_label = tk.Label(self.preview_canvas)  # Dummy label for image reference
         
-        # Preview actions (browser buttons)
-        preview_actions = tk.Frame(cover_frame)
-        preview_actions.pack(fill=tk.X, padx=5, pady=(0, 5))
+        # Preview actions (browser button)
+        preview_actions = tk.Frame(cover_container, bg=self.colors['card_bg'])
+        preview_actions.pack(fill=tk.X)
 
-        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir en navegador", command=self._open_selected_series, state=tk.DISABLED)
-        self.open_series_button.pack(side=tk.LEFT, padx=2)
+        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir en navegador",
+                                           command=self._open_selected_series, state=tk.DISABLED,
+                                           bg=self.colors['warning'], fg='white',
+                                           font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
+                                           padx=10, pady=6, cursor='hand2')
+        self.open_series_button.pack(fill=tk.X)
         
         # Right: Metadata display
-        metadata_frame = tk.Frame(preview_paned)
-        preview_paned.add(metadata_frame, minsize=400)
+        metadata_container = tk.Frame(preview_paned, bg=self.colors['card_bg'])
+        preview_paned.add(metadata_container, minsize=280)
         
-        tk.Label(metadata_frame, text="Metadatos:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=5, pady=5)
+        metadata_header = tk.Frame(metadata_container, bg=self.colors['card_bg'])
+        metadata_header.pack(fill=tk.X, pady=(0, 8))
+        
+        tk.Label(metadata_header, text="📄 Metadatos", 
+                font=('Arial', 9, 'bold'), bg=self.colors['card_bg'],
+                fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Toggle buttons for metadata view
-        metadata_toggle = tk.Frame(metadata_frame)
-        metadata_toggle.pack(fill=tk.X, padx=5, pady=5)
+        toggle_frame = tk.Frame(metadata_header, bg=self.colors['card_bg'])
+        toggle_frame.pack(side=tk.RIGHT)
         
         self.metadata_view_mode = tk.StringVar(value='pretty')
-        tk.Radiobutton(metadata_toggle, text="Bonito", variable=self.metadata_view_mode, 
-                      value='pretty', command=self._toggle_metadata_view).pack(side=tk.LEFT, padx=5)
-        tk.Radiobutton(metadata_toggle, text="XML", variable=self.metadata_view_mode, 
-                      value='xml', command=self._toggle_metadata_view).pack(side=tk.LEFT, padx=5)
+        
+        self.metadata_pretty_button = tk.Button(toggle_frame, text="Bonito",
+                                               command=lambda: self._toggle_metadata_view(),
+                                               bg=self.colors['primary'], fg='white',
+                                               relief=tk.FLAT, bd=0, padx=8, pady=3,
+                                               font=('Arial', 8, 'bold'), cursor='hand2')
+        self.metadata_pretty_button.pack(side=tk.LEFT, padx=(0, 3))
+        
+        self.metadata_xml_button = tk.Button(toggle_frame, text="XML",
+                                            command=lambda: self._toggle_metadata_view(),
+                                            bg=self.colors['secondary'], fg='white',
+                                            relief=tk.FLAT, bd=0, padx=8, pady=3,
+                                            font=('Arial', 8, 'bold'), cursor='hand2')
+        self.metadata_xml_button.pack(side=tk.LEFT)
         
         # Metadata display with scrollbar
-        metadata_text_frame = tk.Frame(metadata_frame)
-        metadata_text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        metadata_text_frame = tk.Frame(metadata_container, bg=self.colors['card_bg'])
+        metadata_text_frame.pack(fill=tk.BOTH, expand=True)
         
-        metadata_scrollbar = tk.Scrollbar(metadata_text_frame)
+        metadata_scrollbar = tk.Scrollbar(metadata_text_frame, width=12)
         metadata_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, 
                                         yscrollcommand=metadata_scrollbar.set,
-                                        font=('Consolas', 9))
+                                        font=('TkFixedFont', 9), bg='white',
+                                        fg=self.colors['text_dark'],
+                                        relief=tk.FLAT, bd=1,
+                                        highlightthickness=1,
+                                        highlightbackground=self.colors['border'],
+                                        highlightcolor=self.colors['primary'],
+                                        padx=8, pady=8)
         self.metadata_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         metadata_scrollbar.config(command=self.metadata_display.yview)
         
@@ -1553,24 +1939,47 @@ class SearchDialog(tk.Toplevel):
         self.current_metadata_xml = None
         self.current_metadata_dict = None
         
-        # Apply button
-        apply_button_frame = tk.Frame(metadata_frame)
-        apply_button_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Apply button with improved styling
+        apply_container = tk.Frame(right_frame, bg=self.colors['card_bg'])
+        apply_container.pack(fill=tk.X, padx=15, pady=(10, 15))
         
-        self.apply_xml_button = tk.Button(apply_button_frame, text="💾 Aplicar ComicInfo.xml", 
+        tk.Frame(apply_container, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
+        
+        self.apply_xml_button = tk.Button(apply_container, text="💾 Aplicar ComicInfo.xml al archivo", 
                                           command=self._apply_comicinfo_xml, state=tk.DISABLED,
-                                          height=2, font=('Arial', 10, 'bold'))
-        self.apply_xml_button.pack(fill=tk.X, padx=5, pady=5)
+                                          bg=self.colors['success'], fg='white',
+                                          font=('Arial', 10, 'bold'), relief=tk.FLAT, bd=0,
+                                          padx=15, pady=12, cursor='hand2',
+                                          activebackground='#229954')
+        self.apply_xml_button.pack(fill=tk.X)
 
-        # Buttons
-        button_frame = tk.Frame(self)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Bottom button frame with card styling
+        button_container = tk.Frame(self, bg=self.colors['bg'])
+        button_container.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        button_card = tk.Frame(button_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        button_card.pack(fill=tk.X)
+        
+        button_frame = tk.Frame(button_card, bg=self.colors['card_bg'])
+        button_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        tk.Button(button_frame, text="✗ Cerrar", command=self.destroy).pack(side=tk.RIGHT, padx=5)
+        close_btn = tk.Button(button_frame, text="✗ Cerrar", command=self.destroy,
+                             bg=self.colors['secondary'], fg='white',
+                             font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
+                             padx=20, pady=8, cursor='hand2',
+                             activebackground=self.colors['text_light'])
+        close_btn.pack(side=tk.RIGHT)
 
-        # Status label
-        self.status_label = tk.Label(self, text="", fg='blue')
-        self.status_label.pack(fill=tk.X, padx=10)
+        # Status label with better styling
+        status_container = tk.Frame(self, bg=self.colors['toolbar_bg'])
+        status_container.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        self.status_label = tk.Label(status_container, text="", 
+                                     bg=self.colors['toolbar_bg'],
+                                     fg=self.colors['text_dark'],
+                                     font=('Arial', 9), anchor=tk.W,
+                                     padx=15, pady=8)
+        self.status_label.pack(fill=tk.X)
         self._update_open_buttons()
 
     def _log(self, message):
@@ -2390,11 +2799,24 @@ class SearchDialog(tk.Toplevel):
         if not self.current_metadata_dict and not self.current_metadata_xml:
             return
         
-        mode = self.metadata_view_mode.get()
+        # Toggle the mode
+        current = self.metadata_view_mode.get()
+        new_mode = 'xml' if current == 'pretty' else 'pretty'
+        self.metadata_view_mode.set(new_mode)
+        
+        # Update button styles
+        if new_mode == 'xml':
+            self.metadata_xml_button.config(bg=self.colors['primary'], fg='white')
+            self.metadata_pretty_button.config(bg=self.colors['secondary'], fg='white')
+        else:
+            self.metadata_xml_button.config(bg=self.colors['secondary'], fg='white')
+            self.metadata_pretty_button.config(bg=self.colors['primary'], fg='white')
+        
+        # Update display
         self.metadata_display.config(state=tk.NORMAL)
         self.metadata_display.delete('1.0', tk.END)
         
-        if mode == 'pretty':
+        if new_mode == 'pretty':
             # Show formatted metadata
             text = self._format_metadata_pretty(self.current_metadata_dict)
             self.metadata_display.insert('1.0', text)
