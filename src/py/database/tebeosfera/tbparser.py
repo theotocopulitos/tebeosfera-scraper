@@ -797,6 +797,7 @@ class TebeoSferaParser(object):
                             'url': url,
                             'series_name': title,
                             'type': 'saga',
+                            'is_leaf': True,  # Sagas are single pages
                             'thumb_url': None
                         })
                 log.debug("Direct scan found {0} saga links".format(len(direct_results) - saga_count_before))
@@ -1066,7 +1067,7 @@ class TebeoSferaParser(object):
             if section_type == 'saga':
                 url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/sagas/([^"]+)\.html)"[^>]*>')
             elif section_type == 'collection':
-                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/colecciones/([^"]+)\.html)"[^>]*>')
+                url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/series/([^"]+)\.html)"[^>]*>')
             else:  # issue
                 url, slug, title = self._find_link_with_text(linea_content, r'<a[^>]*href="(/numeros/([^"]+)\.html)"[^>]*>')
             
@@ -1075,7 +1076,7 @@ class TebeoSferaParser(object):
                 # Try all types
                 for pattern in [
                     r'<a[^>]*href="(/(?:sagas)/([^"]+)\.html)"[^>]*>',
-                    r'<a[^>]*href="(/(?:colecciones)/([^"]+)\.html)"[^>]*>',
+                    r'<a[^>]*href="(/(?:series)/([^"]+)\.html)"[^>]*>',
                     r'<a[^>]*href="(/(?:numeros)/([^"]+)\.html)"[^>]*>'
                 ]:
                     url, slug, title = self._find_link_with_text(linea_content, pattern)
@@ -1087,7 +1088,7 @@ class TebeoSferaParser(object):
             
             # For collections and sagas, title IS the series name
             if section_type in ['collection', 'saga']:
-                results.append({
+                result_dict = {
                     'slug': slug,
                     'title': title,
                     'url': url,
@@ -1095,7 +1096,11 @@ class TebeoSferaParser(object):
                     'image_url': full_image_url or thumb_url,
                     'series_name': title,
                     'type': section_type
-                })
+                }
+                # Sagas are single pages, not collections of issues
+                if section_type == 'saga':
+                    result_dict['is_leaf'] = True
+                results.append(result_dict)
             else:
                 # For issues, parse series name from title
                 full_title = title
