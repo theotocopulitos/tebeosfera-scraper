@@ -996,20 +996,29 @@ class TebeoSferaParser(object):
         from utils_compat import log
         
         # Find all linea_resultados in this section
+        # IMPORTANT: Use a more robust approach that handles nested/malformed HTML
+        # First, find ALL linea_resultados opening tags
+        linea_openings = list(re.finditer(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', section_content, re.IGNORECASE))
+        
         lineas = []
-        pos = 0
-        while True:
-            start_match = re.search(r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>', section_content[pos:], re.IGNORECASE)
-            if not start_match:
-                break
+        for i, opening_match in enumerate(linea_openings):
+            start_pos = opening_match.end()
             
-            start_pos = pos + start_match.end()
+            # Find the boundary for this linea: either the next linea opening or end of section
+            if i + 1 < len(linea_openings):
+                boundary = linea_openings[i + 1].start()
+            else:
+                boundary = len(section_content)
+            
+            # Within this boundary, find the matching closing div
+            # Use depth tracking but only within the boundary
+            search_region = section_content[start_pos:boundary]
             depth = 1
-            search_pos = start_pos
+            search_pos = 0
             end_pos = None
             
-            while depth > 0 and search_pos < len(section_content):
-                next_tag = re.search(r'</?div[^>]*>', section_content[search_pos:], re.IGNORECASE)
+            while depth > 0 and search_pos < len(search_region):
+                next_tag = re.search(r'</?div[^>]*>', search_region[search_pos:], re.IGNORECASE)
                 if not next_tag:
                     break
                 
@@ -1022,18 +1031,22 @@ class TebeoSferaParser(object):
                         end_pos = tag_pos
                         break
                 elif tag.startswith('<div'):
-                    depth += 1
+                    # Don't count nested linea_resultados as increasing depth
+                    # since they should be processed separately
+                    if 'linea_resultados' not in tag:
+                        depth += 1
                 
                 search_pos = tag_pos + next_tag.end()
             
-            if end_pos:
-                linea_content = section_content[start_pos:end_pos]
+            if end_pos is not None:
+                linea_content = search_region[:end_pos]
                 lineas.append(linea_content)
-                pos = end_pos + 6
-            else:
-                break
+            elif len(search_region) > 0:
+                # If we couldn't find a proper closing tag, use the entire region up to the boundary
+                # This handles malformed HTML better
+                lineas.append(search_region)
         
-        # Fallback to simple pattern
+        # Fallback to simple pattern if no results found
         if not lineas:
             linea_pattern = r'<div[^>]*class="[^"]*linea_resultados[^"]*"[^>]*>(.*?)</div>'
             simple_lineas = re.finditer(linea_pattern, section_content, re.DOTALL | re.IGNORECASE)
