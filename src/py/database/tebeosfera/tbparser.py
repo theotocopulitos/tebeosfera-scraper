@@ -1072,14 +1072,21 @@ class TebeoSferaParser(object):
             
             # Fallback: try any link type if pattern didn't match
             if not title:
-                # Try all types
-                for pattern in [
-                    r'<a[^>]*href="(/(?:sagas)/([^"]+)\.html)"[^>]*>',
-                    r'<a[^>]*href="(/(?:colecciones)/([^"]+)\.html)"[^>]*>',
-                    r'<a[^>]*href="(/(?:numeros)/([^"]+)\.html)"[^>]*>'
-                ]:
-                    url, slug, title = self._find_link_with_text(linea_content, pattern)
+                # Try other types
+                fallback_patterns = {
+                    'saga': r'<a[^>]*href="(/(?:sagas)/([^"]+)\.html)"[^>]*>',
+                    'collection': r'<a[^>]*href="(/(?:colecciones)/([^"]+)\.html)"[^>]*>',
+                    'issue': r'<a[^>]*href="(/(?:numeros)/([^"]+)\.html)"[^>]*>'
+                }
+                # Order of fallback: sagas, then collections, then issues
+                for ft_type in ['saga', 'collection', 'issue']:
+                    if ft_type == section_type:
+                        continue # Already tried this type
+        
+                    url, slug, title = self._find_link_with_text(linea_content, fallback_patterns[ft_type])
                     if title:
+                        # The type of the result is actually what we found, not the section_type
+                        section_type = ft_type
                         break
             
             if not url or not slug:
