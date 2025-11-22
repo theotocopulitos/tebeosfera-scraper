@@ -139,13 +139,21 @@ class TebeoSferaParser(object):
                     series_title = self._clean_text(span.get_text())
                     # Get text after the span and <br> tag
                     remaining_text = []
+                    span_found = False
                     for content in titulo_div.children:
-                        if content == span or (hasattr(content, 'name') and content.name == 'br'):
+                        # Track if we've passed the span element
+                        if hasattr(content, 'name') and content.name == 'span':
+                            span_found = True
                             continue
-                        if hasattr(content, 'get_text'):
-                            remaining_text.append(content.get_text())
-                        elif isinstance(content, str):
-                            remaining_text.append(content)
+                        # Skip <br> tags
+                        if hasattr(content, 'name') and content.name == 'br':
+                            continue
+                        # Only collect content after the span
+                        if span_found:
+                            if hasattr(content, 'get_text'):
+                                remaining_text.append(content.get_text())
+                            elif isinstance(content, str):
+                                remaining_text.append(content)
                     issue_title = self._clean_text(''.join(remaining_text))
                     metadata['series'] = series_title
                     metadata['title'] = issue_title
@@ -397,7 +405,9 @@ class TebeoSferaParser(object):
                 # Look for links in the parent or next siblings
                 links = []
                 next_elem = span.next_sibling
-                while next_elem and len(links) < 5:  # Limit search
+                # Limit search to 5 links to avoid scanning too much of the DOM
+                MAX_AUTHOR_LINKS = 5
+                while next_elem and len(links) < MAX_AUTHOR_LINKS:
                     if hasattr(next_elem, 'name'):
                         if next_elem.name == 'a':
                             links.append(next_elem)
@@ -460,9 +470,11 @@ class TebeoSferaParser(object):
                 parent = element.parent
                 if parent:
                     # Collect paragraphs after this marker
+                    # Limit to 10 paragraphs to avoid collecting unrelated content
+                    MAX_SYNOPSIS_PARAGRAPHS = 10
                     paragraphs = []
                     next_elem = parent.next_sibling
-                    while next_elem and len(paragraphs) < 10:
+                    while next_elem and len(paragraphs) < MAX_SYNOPSIS_PARAGRAPHS:
                         if hasattr(next_elem, 'name'):
                             if next_elem.name == 'p':
                                 text = self._clean_text_preserve_newlines(next_elem.get_text())
@@ -727,9 +739,6 @@ class TebeoSferaParser(object):
             }
         
         return None
-        
-        log.debug("Parser returning {0} total results".format(len(results)))
-        return results
 
     def _parse_date(self, date_string):
         '''
