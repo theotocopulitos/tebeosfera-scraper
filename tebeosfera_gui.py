@@ -28,6 +28,28 @@ from time import strftime
 
 TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
 
+# UI Constants
+MAX_FILENAME_LENGTH = 60  # Maximum characters for filename display in dialogs
+
+# Default color scheme for the application
+DEFAULT_COLORS = {
+    'bg': '#f5f5f5',
+    'fg': '#2c3e50',
+    'primary': '#3498db',
+    'primary_hover': '#2980b9',
+    'success': '#27ae60',
+    'success_hover': '#229954',
+    'danger': '#e74c3c',
+    'warning': '#f39c12',
+    'warning_hover': '#d68910',
+    'secondary': '#95a5a6',
+    'border': '#bdc3c7',
+    'card_bg': '#ffffff',
+    'toolbar_bg': '#ecf0f1',
+    'text_dark': '#2c3e50',
+    'text_light': '#7f8c8d'
+}
+
 
 class ToolTip(object):
     '''Create a tooltip for a given widget'''
@@ -60,9 +82,9 @@ class ToolTip(object):
     def showtip(self, event=None):
         if self.tipwindow or not self.text:
             return
-        x, y, cx, cy = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') else (0, 0, 0, 0)
-        x = x + self.widget.winfo_rootx() + 27
-        y = y + cy + self.widget.winfo_rooty() + 27
+        # Position tooltip near the widget (bottom-right)
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
         self.tipwindow = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_geometry("+%d+%d" % (x, y))
@@ -443,22 +465,8 @@ class TebeoSferaGUI(tk.Tk):
         self.title("TebeoSfera Scraper - Comic Metadata Editor")
         self.geometry("1280x850")
         
-        # Color scheme
-        self.colors = {
-            'bg': '#f5f5f5',
-            'fg': '#2c3e50',
-            'primary': '#3498db',
-            'primary_hover': '#2980b9',
-            'success': '#27ae60',
-            'danger': '#e74c3c',
-            'warning': '#f39c12',
-            'secondary': '#95a5a6',
-            'border': '#bdc3c7',
-            'card_bg': '#ffffff',
-            'toolbar_bg': '#ecf0f1',
-            'text_dark': '#2c3e50',
-            'text_light': '#7f8c8d'
-        }
+        # Use default color scheme
+        self.colors = DEFAULT_COLORS.copy()
         
         # Configure main window style
         self.configure(bg=self.colors['bg'])
@@ -778,7 +786,7 @@ class TebeoSferaGUI(tk.Tk):
         metadata_text_frame = tk.Frame(metadata_frame, bg=self.colors['card_bg'])
         metadata_text_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('Consolas', 9),
+        self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, font=('Consolas', 'Monaco', 'Courier New', 'monospace', 9),
                                        bg='white', fg=self.colors['text_dark'],
                                        relief=tk.FLAT, bd=1,
                                        highlightthickness=1,
@@ -870,8 +878,8 @@ class TebeoSferaGUI(tk.Tk):
         
         # Add hover effects to action buttons
         for btn, hover_color in [(btn_search, self.colors['primary_hover']),
-                                 (btn_generate, '#229954'),
-                                 (btn_browser, '#d68910')]:
+                                 (btn_generate, self.colors['success_hover']),
+                                 (btn_browser, self.colors['warning_hover'])]:
             original_color = btn['bg']
             btn.bind('<Enter>', lambda e, b=btn, c=hover_color: b.config(bg=c))
             btn.bind('<Leave>', lambda e, b=btn, c=original_color: b.config(bg=c))
@@ -950,7 +958,7 @@ class TebeoSferaGUI(tk.Tk):
         
         self.log_text = tk.Text(log_text_frame, height=8, wrap=tk.WORD, 
                                 yscrollcommand=log_scrollbar.set,
-                                font=('Consolas', 9), bg='#fafafa',
+                                font=('Consolas', 'Monaco', 'Courier New', 'monospace', 9), bg='#fafafa',
                                 fg=self.colors['text_dark'],
                                 relief=tk.FLAT, bd=1,
                                 highlightthickness=1,
@@ -1707,27 +1715,16 @@ class SearchDialog(tk.Toplevel):
 
         # Color scheme (inherit from parent if available)
         if hasattr(parent, 'colors'):
-            self.colors = parent.colors
+            self.colors = parent.colors.copy()
         else:
-            self.colors = {
-                'bg': '#f5f5f5',
-                'fg': '#2c3e50',
-                'primary': '#3498db',
-                'primary_hover': '#2980b9',
-                'success': '#27ae60',
-                'danger': '#e74c3c',
-                'warning': '#f39c12',
-                'secondary': '#95a5a6',
-                'border': '#bdc3c7',
-                'card_bg': '#ffffff',
-                'toolbar_bg': '#ecf0f1',
-                'text_dark': '#2c3e50',
-                'text_light': '#7f8c8d'
-            }
+            self.colors = DEFAULT_COLORS.copy()
         
         self.configure(bg=self.colors['bg'])
 
-        self.title("🔍 Buscar en TebeoSfera - {0}".format(comic.filename[:60] + '...' if len(comic.filename) > 60 else comic.filename))
+        truncated_filename = (comic.filename[:MAX_FILENAME_LENGTH] + '...' 
+                             if len(comic.filename) > MAX_FILENAME_LENGTH 
+                             else comic.filename)
+        self.title("🔍 Buscar en TebeoSfera - {0}".format(truncated_filename))
         self.geometry("1400x800")
         self.transient(parent)
 
@@ -1948,7 +1945,7 @@ class SearchDialog(tk.Toplevel):
         
         self.metadata_display = tk.Text(metadata_text_frame, wrap=tk.WORD, 
                                         yscrollcommand=metadata_scrollbar.set,
-                                        font=('Consolas', 9), bg='white',
+                                        font=('Consolas', 'Monaco', 'Courier New', 'monospace', 9), bg='white',
                                         fg=self.colors['text_dark'],
                                         relief=tk.FLAT, bd=1,
                                         highlightthickness=1,
