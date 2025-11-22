@@ -1,5 +1,14 @@
 profile
 build
-__pycache__
+__pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+.pytest_cache/
+.coverage
+

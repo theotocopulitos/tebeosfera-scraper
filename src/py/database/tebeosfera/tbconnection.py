@@ -148,26 +148,19 @@ class TebeoSferaConnection(object):
         query_encoded = query.replace(' ', '_')
         query_encoded = urllib.parse.quote(query_encoded, safe='_')
 
-        # Build search URL (initial page)
+        # Build search URL (for reference, though we'll use AJAX calls)
         search_url = "/buscador/{0}/".format(query_encoded)
         
-        # Get initial page to understand structure
-        initial_html = self.get_page(search_url)
-        if not initial_html:
-            return None
+        from utils_compat import log
         
-        # The page uses AJAX to load results. We need to make the AJAX calls directly.
-        # Based on the JavaScript code, we need to call:
-        # 1. /neko/templates/ajax/buscador_txt_post.php for collections, authors, etc.
-        # 2. /neko/php/ajax/megaAjax.php for numbers (action: "buscador_simple_numeros")
-        
-        # Collect all results from AJAX endpoints
+        # All search results are loaded via AJAX calls, not in the initial page
+        # We need to make separate AJAX calls for each type of result
         all_results_html = []
         
-        # Search in collections first
+        # Search in collections (T3_publicaciones table)
         try:
             collections_data = urllib.parse.urlencode({
-                'tabla': 'T3_colecciones',
+                'tabla': 'T3_publicaciones',
                 'busqueda': original_query
             }).encode('utf-8')
             
@@ -199,16 +192,21 @@ class TebeoSferaConnection(object):
                 # Add section header for collections
                 collections_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + collections_html
                 all_results_html.append(collections_with_header)
-                from utils_compat import log
                 log.debug("Collections AJAX returned {0} bytes".format(len(collections_html)))
+            else:
+                if not collections_html:
+                    log.debug("Collections AJAX returned empty response")
+                elif not collections_html.strip():
+                    log.debug("Collections AJAX returned whitespace-only response ({0} bytes)".format(len(collections_html)))
+                elif collections_html.startswith('Error'):
+                    log.debug("Collections AJAX returned error: {0}".format(collections_html[:200]))
         except Exception as e:
-            from utils_compat import log
             log.debug("Error fetching collections via AJAX: {0}".format(sstr(e)))
         
-        # Search in sagas
+        # Search in sagas (T3_series table)
         try:
             sagas_data = urllib.parse.urlencode({
-                'tabla': 'T3_sagas',
+                'tabla': 'T3_series',
                 'busqueda': original_query
             }).encode('utf-8')
             
@@ -240,19 +238,22 @@ class TebeoSferaConnection(object):
                 # Add section header for sagas
                 sagas_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Sagas</div>\n' + sagas_html
                 all_results_html.append(sagas_with_header)
-                from utils_compat import log
                 log.debug("Sagas AJAX returned {0} bytes".format(len(sagas_html)))
+            else:
+                if not sagas_html:
+                    log.debug("Sagas AJAX returned empty response")
+                elif not sagas_html.strip():
+                    log.debug("Sagas AJAX returned whitespace-only response ({0} bytes)".format(len(sagas_html)))
+                elif sagas_html.startswith('Error'):
+                    log.debug("Sagas AJAX returned error: {0}".format(sagas_html[:200]))
         except Exception as e:
-            from utils_compat import log
             log.debug("Error fetching sagas via AJAX: {0}".format(sstr(e)))
         
-        # Search in numbers (issues)
+        # Search in numbers (issues) using megaAjax.php endpoint (finds all 56 issues vs 52 with buscador_txt_post.php)
         try:
             numbers_data = urllib.parse.urlencode({
                 'action': 'buscador_simple_numeros',
-                'busqueda': original_query,
-                'reg_ini': '0',
-                'rpp': '100'  # Results per page
+                'busqueda': original_query
             }).encode('utf-8')
             
             numbers_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
@@ -283,17 +284,14 @@ class TebeoSferaConnection(object):
                 # Add section header for numbers
                 numbers_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Números</div>\n' + numbers_html
                 all_results_html.append(numbers_with_header)
-                from utils_compat import log
                 log.debug("Numbers AJAX returned {0} bytes".format(len(numbers_html)))
         except Exception as e:
-            from utils_compat import log
             log.debug("Error fetching numbers via AJAX: {0}".format(sstr(e)))
         
         # Combine all results into a single HTML string
         # Section headers are already added to each chunk
         if all_results_html:
             combined_html = '\n'.join(all_results_html)
-            from utils_compat import log
             log.debug("Combined AJAX results: {0} bytes".format(len(combined_html)))
             return combined_html
         
