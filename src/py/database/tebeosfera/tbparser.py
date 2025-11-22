@@ -9,6 +9,7 @@ Uses BeautifulSoup4 for robust HTML parsing.
 
 import re
 from html.entities import name2codepoint
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from utils_compat import sstr
 
@@ -232,10 +233,9 @@ class TebeoSferaParser(object):
         cover_img = soup.find('img', id='img_principal')
         if cover_img:
             cover_url = cover_img.get('src', '')
-            # Ensure it's a full URL
-            if cover_url and not cover_url.startswith('http'):
-                cover_url = 'https://www.tebeosfera.com' + cover_url
+            # Ensure it's a full URL using urljoin
             if cover_url:
+                cover_url = urljoin('https://www.tebeosfera.com/', cover_url)
                 metadata['cover_image_url'] = cover_url
                 metadata['image_urls'].append(cover_url)
 
@@ -243,10 +243,10 @@ class TebeoSferaParser(object):
         all_images = soup.find_all('img', src=re.compile(r'T3_numeros'))
         for img in all_images:
             img_url = img.get('src', '')
-            if img_url and not img_url.startswith('http'):
-                img_url = 'https://www.tebeosfera.com' + img_url
-            if img_url and img_url not in metadata['image_urls']:
-                metadata['image_urls'].append(img_url)
+            if img_url:
+                img_url = urljoin('https://www.tebeosfera.com/', img_url)
+                if img_url not in metadata['image_urls']:
+                    metadata['image_urls'].append(img_url)
 
         # Parse dates from the date field
         if metadata['date']:
@@ -399,10 +399,10 @@ class TebeoSferaParser(object):
             parent = span.parent
             if parent:
                 # Look for links in the parent or next siblings
-                links = []
-                next_elem = span.next_sibling
                 # Limit search to 5 links to avoid scanning too much of the DOM
                 MAX_AUTHOR_LINKS = 5
+                links = []
+                next_elem = span.next_sibling
                 while next_elem and len(links) < MAX_AUTHOR_LINKS:
                     if hasattr(next_elem, 'name'):
                         if next_elem.name == 'a':
@@ -596,7 +596,7 @@ class TebeoSferaParser(object):
                     if next_elem.name == 'div' and next_elem.get('class') and 'help-block' in next_elem.get('class', []):
                         # Hit next section header
                         break
-                    elif next_elem.name == 'div' and next_elem.get('class') and 'linea_resultados' in ' '.join(next_elem.get('class', [])):
+                    elif next_elem.name == 'div' and next_elem.get('class') and 'linea_resultados' in next_elem.get('class', []):
                         # Found a result line
                         result = self._parse_result_line_bs(next_elem, section_type)
                         if result:
@@ -636,8 +636,8 @@ class TebeoSferaParser(object):
         cover_img = line_div.find('img', id='img_principal')
         if cover_img:
             thumb_url = cover_img.get('src', '')
-            if thumb_url and not thumb_url.startswith('http'):
-                thumb_url = 'https://www.tebeosfera.com' + thumb_url
+            if thumb_url:
+                thumb_url = urljoin('https://www.tebeosfera.com/', thumb_url)
         
         # Extract full image URL (from <a> wrapping the img)
         full_image_url = None
@@ -645,8 +645,8 @@ class TebeoSferaParser(object):
             parent_link = cover_img.find_parent('a')
             if parent_link:
                 full_image_url = parent_link.get('href', '')
-                if full_image_url and not full_image_url.startswith('http'):
-                    full_image_url = 'https://www.tebeosfera.com' + full_image_url
+                if full_image_url:
+                    full_image_url = urljoin('https://www.tebeosfera.com/', full_image_url)
         
         # Find the main content link (not image link)
         url = None
