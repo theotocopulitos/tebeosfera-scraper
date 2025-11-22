@@ -546,23 +546,38 @@ class TebeoSferaGUI(tk.Tk):
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Archivo", menu=file_menu)
-        file_menu.add_command(label="Abrir archivo(s)...", command=self._open_files)
-        file_menu.add_command(label="Abrir directorio...", command=self._open_directory)
+        file_menu.add_command(label="Abrir archivo(s)...", command=self._open_files, accelerator="Ctrl+O")
+        file_menu.add_command(label="Abrir directorio...", command=self._open_directory, accelerator="Ctrl+Shift+O")
         file_menu.add_separator()
-        file_menu.add_command(label="Salir", command=self._on_close)
+        file_menu.add_command(label="Salir", command=self._on_close, accelerator="Ctrl+Q")
 
         # Edit menu
         edit_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Editar", menu=edit_menu)
-        edit_menu.add_command(label="Procesar seleccionados", command=self._process_selected)
-        edit_menu.add_command(label="Procesar todos", command=self._process_all)
+        edit_menu.add_command(label="Procesar seleccionados", command=self._process_selected, accelerator="Ctrl+P")
+        edit_menu.add_command(label="Procesar todos", command=self._process_all, accelerator="Ctrl+Shift+P")
         edit_menu.add_separator()
-        edit_menu.add_command(label="Limpiar lista", command=self._clear_list)
+        edit_menu.add_command(label="Limpiar lista", command=self._clear_list, accelerator="Ctrl+L")
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Ayuda", menu=help_menu)
-        help_menu.add_command(label="Acerca de...", command=self._show_about)
+        help_menu.add_command(label="Atajos de teclado", command=self._show_shortcuts)
+        help_menu.add_separator()
+        help_menu.add_command(label="Acerca de...", command=self._show_about, accelerator="F1")
+        
+        # Bind keyboard shortcuts
+        self.bind_all("<Control-o>", lambda e: self._open_files())
+        self.bind_all("<Control-O>", lambda e: self._open_directory())
+        self.bind_all("<Control-q>", lambda e: self._on_close())
+        self.bind_all("<Control-p>", lambda e: self._process_selected())
+        self.bind_all("<Control-P>", lambda e: self._process_all())
+        self.bind_all("<Control-l>", lambda e: self._clear_list())
+        self.bind_all("<F1>", lambda e: self._show_about())
+        
+        # Arrow key navigation for page browsing
+        self.bind_all("<Left>", lambda e: self._show_prev_page() if self.prev_page_button['state'] != tk.DISABLED else None)
+        self.bind_all("<Right>", lambda e: self._show_next_page() if self.next_page_button['state'] != tk.DISABLED else None)
 
     def _create_toolbar(self):
         '''Create toolbar with quick actions'''
@@ -1590,12 +1605,41 @@ class TebeoSferaGUI(tk.Tk):
 
     def _show_about(self):
         '''Show about dialog'''
-        messagebox.showinfo("Acerca de",
+        about_text = (
             "TebeoSfera Scraper GUI\n\n"
             "Scraper de metadatos para comics españoles\n"
             "Fuente: tebeosfera.com\n\n"
-            "Versión 2.0\n"
-            "© 2025")
+            "Versión 2.0\n\n"
+            "Características:\n"
+            "• Extracción de metadatos de TebeoSfera\n"
+            "• Generación de ComicInfo.xml estándar\n"
+            "• Comparación de portadas con IA\n"
+            "• Procesamiento por lotes\n"
+            "• Soporte CBZ y CBR\n\n"
+            "GitHub: github.com/theotocopulitos/tebeosfera-scraper\n"
+            "© 2025 - Licencia Apache 2.0"
+        )
+        messagebox.showinfo("Acerca de TebeoSfera Scraper", about_text)
+    
+    def _show_shortcuts(self):
+        '''Show keyboard shortcuts dialog'''
+        shortcuts_text = (
+            "Atajos de Teclado\n\n"
+            "Archivo:\n"
+            "  Ctrl+O - Abrir archivos\n"
+            "  Ctrl+Shift+O - Abrir directorio\n"
+            "  Ctrl+Q - Salir\n\n"
+            "Editar:\n"
+            "  Ctrl+P - Procesar seleccionados\n"
+            "  Ctrl+Shift+P - Procesar todos\n"
+            "  Ctrl+L - Limpiar lista\n\n"
+            "Ayuda:\n"
+            "  F1 - Acerca de\n\n"
+            "Navegación:\n"
+            "  ← → - Cambiar entre comics\n"
+            "  Enter - Buscar en TebeoSfera (en diálogo de búsqueda)"
+        )
+        messagebox.showinfo("Atajos de Teclado", shortcuts_text)
 
     def _on_close(self):
         '''Handle window close'''
@@ -1727,6 +1771,9 @@ class SearchDialog(tk.Toplevel):
 
         # Auto-search based on filename
         self._auto_search()
+        
+        # Set focus to search entry after dialog is shown
+        self.after(100, lambda: self.search_entry.focus_set())
 
     def _create_ui(self):
         '''Create search dialog UI with improved styling'''
