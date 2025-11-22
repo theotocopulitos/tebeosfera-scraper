@@ -157,56 +157,56 @@ class TebeoSferaConnection(object):
         # We need to make separate AJAX calls for each type of result
         all_results_html = []
         
-        # Search in series/collections (T3_series table)
+        # Search in collections (T3_publicaciones table)
         try:
-            series_data = urllib.parse.urlencode({
-                'tabla': 'T3_series',
+            collections_data = urllib.parse.urlencode({
+                'tabla': 'T3_publicaciones',
                 'busqueda': original_query
             }).encode('utf-8')
             
-            series_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
-            request = urllib.request.Request(series_url, data=series_data, method='POST')
+            collections_url = TebeoSferaConnection.BASE_URL + "/neko/templates/ajax/buscador_txt_post.php"
+            request = urllib.request.Request(collections_url, data=collections_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
             request.add_header('Referer', TebeoSferaConnection.BASE_URL + search_url)
             
             self._enforce_rate_limit()
             response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
-            series_html = response.read()
+            collections_html = response.read()
             
             # Check if response is gzipped
-            if series_html.startswith(b'\x1f\x8b'):  # gzip magic number
-                series_html = gzip.decompress(series_html)
+            if collections_html.startswith(b'\x1f\x8b'):  # gzip magic number
+                collections_html = gzip.decompress(collections_html)
             
             # Decode response
             charset = self._get_charset(response)
             if charset:
-                series_html = series_html.decode(charset)
+                collections_html = collections_html.decode(charset)
             else:
                 try:
-                    series_html = series_html.decode('utf-8')
+                    collections_html = collections_html.decode('utf-8')
                 except:
-                    series_html = series_html.decode('latin-1')
+                    collections_html = collections_html.decode('latin-1')
             
-            if series_html and series_html.strip() and not series_html.startswith('Error'):
-                # Add section header for series/collections
-                series_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + series_html
-                all_results_html.append(series_with_header)
-                log.debug("Series/Collections AJAX returned {0} bytes".format(len(series_html)))
+            if collections_html and collections_html.strip() and not collections_html.startswith('Error'):
+                # Add section header for collections
+                collections_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Colecciones</div>\n' + collections_html
+                all_results_html.append(collections_with_header)
+                log.debug("Collections AJAX returned {0} bytes".format(len(collections_html)))
             else:
-                if not series_html:
-                    log.debug("Series/Collections AJAX returned empty response")
-                elif not series_html.strip():
-                    log.debug("Series/Collections AJAX returned whitespace-only response ({0} bytes)".format(len(series_html)))
-                elif series_html.startswith('Error'):
-                    log.debug("Series/Collections AJAX returned error: {0}".format(series_html[:200]))
+                if not collections_html:
+                    log.debug("Collections AJAX returned empty response")
+                elif not collections_html.strip():
+                    log.debug("Collections AJAX returned whitespace-only response ({0} bytes)".format(len(collections_html)))
+                elif collections_html.startswith('Error'):
+                    log.debug("Collections AJAX returned error: {0}".format(collections_html[:200]))
         except Exception as e:
-            log.debug("Error fetching series/collections via AJAX: {0}".format(sstr(e)))
+            log.debug("Error fetching collections via AJAX: {0}".format(sstr(e)))
         
-        # Search in sagas (T3_sagas table)
+        # Search in sagas (T3_series table)
         try:
             sagas_data = urllib.parse.urlencode({
-                'tabla': 'T3_sagas',
+                'tabla': 'T3_series',
                 'busqueda': original_query
             }).encode('utf-8')
             
