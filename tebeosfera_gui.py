@@ -57,7 +57,7 @@ DEFAULT_COLORS = {
 
 def set_toggle_button_colors(active_button, inactive_button):
     """Helper to set colors for toggle buttons (e.g., metadata view toggle)"""
-    active_button.configure(fg_color=CTK_BUTTON_ACTIVE_COLOR)
+    active_button.configure(fg_color=None)  # Revert to default theme color
     inactive_button.configure(fg_color=CTK_BUTTON_INACTIVE_COLOR)
 
 
