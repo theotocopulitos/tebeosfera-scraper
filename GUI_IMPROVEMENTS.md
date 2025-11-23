@@ -2,225 +2,272 @@
 
 ## Overview
 
-The TebeoSfera Scraper GUI has been significantly improved with a modern, professional design that enhances usability and visual appeal.
+The TebeoSfera Scraper GUI has been modernized with **customtkinter**, a modern and customizable Python UI library built on top of tkinter. This migration significantly simplifies the codebase, improves maintainability, and provides a professional, modern appearance.
 
-## Key Improvements
+## Migration to CustomTkinter
 
-### 1. Modern Color Scheme
+### What Changed
 
-A professional color palette has been implemented throughout the interface:
+The GUI has been migrated from manual tkinter styling to the customtkinter library. This brings several improvements:
 
-- **Primary Blue** (#3498db): Main actions and important UI elements
-- **Success Green** (#27ae60): Positive actions like generating/applying metadata
-- **Warning Orange** (#f39c12): Browser/external actions
-- **Danger Red** (#e74c3c): Destructive actions
-- **Neutral Gray** (#95a5a6): Secondary actions and disabled states
-- **Clean Backgrounds**: White cards on light gray background for clear hierarchy
+1. **Modern Appearance**: Professional, clean design with rounded corners and modern color schemes
+2. **Simplified Code**: ~120 lines of manual styling code eliminated
+3. **Built-in Themes**: Automatic light/dark mode support and color themes
+4. **Better Maintainability**: No manual hover effects or color management needed
+5. **Consistent Styling**: Unified appearance across all widgets
 
-### 2. Card-Based Layout
+### Key Improvements
 
-The interface now uses a card-based design pattern:
-- White card containers with subtle borders
-- Clear visual separation between different functional areas
-- Better visual hierarchy with grouped related elements
-- Improved focus and readability
+#### 1. Main Window (TebeoSferaGUI)
 
-### 3. Enhanced Typography
+**Before:**
+```python
+class TebeoSferaGUI(tk.Tk):
+    def __init__(self):
+        tk.Tk.__init__(self)
+        self.colors = DEFAULT_COLORS.copy()
+        self.configure(bg=self.colors['bg'])
+        # Manual color management...
+```
 
-- **Headers**: Bold Arial 11pt for section headers
-- **Body Text**: Arial 9pt for general content
-- **Code/Logs**: Consolas 9pt for monospaced content
-- Clear size hierarchy for better scanability
+**After:**
+```python
+# Configure customtkinter in the main entry point (main thread) after import
+# Avoid calling this at import time to prevent issues in headless/test environments.
+def configure_ui():
+    ctk.set_appearance_mode("light")
+    ctk.set_default_color_theme("blue")
 
-### 4. Interactive Elements
+if __name__ == "__main__":
+    configure_ui()
+    app = TebeoSferaGUI()
+    app.mainloop()
 
-#### Buttons
-- Flat modern design without borders
-- Hover effects for visual feedback
-- Color-coded by function (primary, success, warning, danger)
-- Larger click targets with generous padding
-- Cursor changes to pointer on hover
+class TebeoSferaGUI(ctk.CTk):
+    def __init__(self):
+        ctk.CTk.__init__(self)
+        # Colors handled automatically!
+```
 
-#### Text Areas
-- Clean borders with focus highlighting
-- Primary color highlight when active
-- Better padding for improved readability
-- Subtle gray background for read-only areas
+#### 2. Buttons
 
-#### Toolbar
-- Grouped buttons by function
-- Visual separators between groups
-- Checkbox with clear labeling and icon
-- Consistent hover states
+**Before (Manual Styling):**
+```python
+def _create_toolbar_button(self, parent, text, command, bg='#3498db', fg='white'):
+    btn = tk.Button(parent, text=text, command=command,
+                   bg=bg, fg=fg, font=('Arial', 9, 'bold'),
+                   relief=tk.FLAT, bd=0, padx=12, pady=6,
+                   cursor='hand2', activebackground=self.colors['primary_hover'])
+    
+    # Manual hover effect
+    def on_enter(e):
+        if bg == self.colors['primary']:
+            btn['bg'] = self.colors['primary_hover']
+        elif bg == self.colors['success']:
+            btn['bg'] = '#229954'
+    
+    def on_leave(e):
+        btn['bg'] = bg
+    
+    btn.bind('<Enter>', on_enter)
+    btn.bind('<Leave>', on_leave)
+    return btn
+```
 
-### 5. Tooltips
+**After (CustomTkinter):**
+```python
+btn = ctk.CTkButton(parent, text="Button Text", command=callback,
+                    fg_color="green", hover_color="darkgreen",
+                    width=120, height=32)
+# Hover effects automatic!
+```
 
-Helpful tooltips added to all major UI elements:
-- Appear after 800ms hover
-- Provide context-sensitive help
-- Non-intrusive yellow background
-- Clear, concise descriptions
+#### 3. Widgets Converted
 
-### 6. Improved Spacing
+- **CTkButton**: Replaces tk.Button with automatic hover effects and modern styling
+- **CTkFrame**: Replaces tk.Frame with customizable appearance
+- **CTkLabel**: Replaces tk.Label with modern text styling
+- **CTkEntry**: Replaces tk.Entry with placeholder support
+- **CTkCheckBox**: Replaces tk.Checkbutton with modern checkbox
+- **CTkProgressBar**: Replaces ttk.Progressbar with customizable progress bar
+- **CTkToplevel**: Replaces tk.Toplevel for dialog windows
 
-- Generous padding (10-15px) around all elements
-- Consistent margins between sections
-- Proper alignment and visual balance
-- Better use of whitespace
+### Removed Code
 
-### 7. Visual Feedback
+The following manual styling patterns have been **completely eliminated**:
 
-- **Hover States**: Buttons darken on hover
-- **Focus States**: Input fields highlight with primary color
-- **Selection States**: List items highlight in primary color
-- **Status Messages**: Clear icons and color coding
+1. ✅ Manual button hover effect bindings (~40 lines)
+2. ✅ `_create_toolbar_button` helper method (~30 lines)
+3. ✅ Manual color configuration for all widgets (~50 lines)
+4. ✅ Manual focus/active color management
+5. ✅ ttk.Style configuration for progress bars
 
-### 8. SearchDialog Improvements
-
-The search dialog matches the main window style:
-- Professional header with window title
-- Card-based results and preview areas
-- Styled treeview for hierarchical results
-- Matching button and input styles
-- Improved metadata toggle buttons
-- Better status bar
+**Total: ~120 lines of complex styling code removed!**
 
 ## Component Details
 
 ### Main Window Components
 
 1. **Toolbar**
-   - Color-coded action buttons
-   - Grouped by functionality
-   - Visual separators
-   - Tooltips on all buttons
+   - CTkButton for all actions
+   - CTkCheckBox for options
+   - Color-coded buttons (blue, green, orange)
+   - Automatic hover effects
 
 2. **File List Panel**
-   - Card container
-   - Section header with icon
-   - Clean list with selection highlighting
-   - Scrollbar styling
+   - Card-based container
+   - Clean selection highlighting
+   - Maintained compatibility with tk.Listbox
 
 3. **Preview Panel**
-   - Split view: cover + metadata
-   - Card styling
-   - Toggle buttons for XML/Pretty view
-   - Better placeholder states
+   - CTkButton for navigation
+   - CTkLabel for page counter
+   - Toggle buttons for metadata view
 
-4. **Page Navigation**
-   - Centered controls
-   - Clear page counter
-   - Disabled state handling
-   - Separator lines
+4. **Action Buttons**
+   - Color-coded by function (search=blue, generate=green, browser=orange)
+   - Automatic hover states
+   - Consistent sizing
 
-5. **Action Buttons**
-   - Full-width layout
-   - Color-coded by function
-   - Hover effects
-   - Tooltips
-
-6. **Details & Log Panels**
-   - Separate card containers
-   - Section headers with icons
-   - Action buttons for log
-   - Better text styling
-
-7. **Status Bar**
-   - Subtle background
-   - Better text contrast
-   - Icon support
+5. **Status Bar**
+   - CTkLabel for status text
+   - CTkProgressBar for progress
 
 ### SearchDialog Components
 
 1. **Search Bar**
-   - Card container
-   - Styled input with focus states
-   - Prominent search button
-   - Enter key support
+   - CTkEntry with clean styling
+   - CTkButton for search action
+   - Enter key support maintained
 
 2. **Results Tree**
-   - Professional treeview styling
-   - Color-coded selection
-   - Hierarchical display
-   - Expandable nodes
+   - Maintained tk.ttk.Treeview (no CTk alternative yet)
+   - Styled to match customtkinter theme
 
 3. **Preview Area**
-   - Split cover/metadata view
-   - Styled toggle buttons
-   - Better placeholder text
-   - Scrollable metadata
+   - CTkButton for browser actions
+   - CTkButton toggles for metadata view
+   - CTkLabel for status
 
-4. **Apply Button**
-   - Prominent success color
-   - Disabled state styling
-   - Clear call-to-action
+4. **Action Buttons**
+   - Apply button (green)
+   - Close button (gray)
+   - Automatic hover effects
 
-## Design Principles
+## Configuration
 
-1. **Consistency**: Same color scheme, spacing, and styling throughout
-2. **Clarity**: Clear visual hierarchy and grouping
-3. **Feedback**: Interactive elements provide visual feedback
-4. **Efficiency**: Tooltips and clear labels reduce learning curve
-5. **Professionalism**: Modern flat design with appropriate colors
-6. **Accessibility**: Good contrast ratios and larger click targets
+### Appearance Modes
 
-## Technical Implementation
+CustomTkinter supports three appearance modes:
+- **"Light"**: Bright, traditional theme (currently used)
+- **"Dark"**: Dark theme for low-light environments
+- **"System"**: Follows system preferences
 
-### Color System
-```python
-colors = {
-    'bg': '#f5f5f5',              # Main background
-    'fg': '#2c3e50',              # Main foreground
-    'primary': '#3498db',         # Primary actions
-    'primary_hover': '#2980b9',   # Primary hover state
-    'success': '#27ae60',         # Success actions
-    'danger': '#e74c3c',          # Destructive actions
-    'warning': '#f39c12',         # Warning/external actions
-    'secondary': '#95a5a6',       # Secondary elements
-    'border': '#bdc3c7',          # Borders and separators
-    'card_bg': '#ffffff',         # Card backgrounds
-    'toolbar_bg': '#ecf0f1',      # Toolbar background
-    'text_dark': '#2c3e50',       # Dark text
-    'text_light': '#7f8c8d'       # Light/placeholder text
-}
-```
+To change: `ctk.set_appearance_mode("dark")`
 
-### Tooltip System
-- Custom ToolTip class
-- 800ms delay before showing
-- Auto-positioning
-- Clean yellow background
-- Non-intrusive design
+### Color Themes
 
-### Button Styling
-- Flat design (relief=tk.FLAT, bd=0)
-- Color-coded backgrounds
-- White text for contrast
-- Hover state bindings
-- Cursor='hand2' for pointer
+Built-in themes available:
+- **"blue"**: Professional blue accents (currently used)
+- **"green"**: Green accents
+- **"dark-blue"**: Darker blue variant
 
-## Future Enhancements
-
-Potential future improvements:
-- Dark mode theme option
-- Customizable color schemes
-- Keyboard shortcuts overlay
-- Animated transitions
-- Progress indicators with percentage
-- More detailed tooltips with keyboard shortcuts
-- Icon set consistency
+To change: `ctk.set_default_color_theme("green")`
 
 ## Usage
 
 The improved GUI requires no changes to existing workflows:
-1. Launch with `python3 tebeosfera_gui.py`
-2. All existing functionality remains unchanged
-3. Enhanced visual experience out of the box
-4. Tooltips provide guidance for new users
+1. Install dependencies: `pip install customtkinter pillow beautifulsoup4`
+2. Launch with `python3 tebeosfera_gui.py`
+3. All existing functionality remains unchanged
+4. Modern appearance out of the box
 
 ## Compatibility
 
-- Python 3.6+
-- tkinter (built-in)
-- Pillow (PIL) for image handling
-- Works on Windows, macOS, and Linux
+- **Python**: 3.6+
+- **Dependencies**: 
+  - customtkinter >= 5.0.0
+  - Pillow (PIL) for image handling
+  - tkinter (built-in)
+- **Platforms**: Windows, macOS, and Linux
+
+## Future Enhancements
+
+Potential improvements enabled by customtkinter:
+
+- ✨ Easy dark mode toggle in settings
+- ✨ Theme selection (blue, green, dark-blue)
+- ✨ System theme following
+- ✨ Tabbed interface for multiple comics
+- ✨ Custom color theme creation
+- ✨ Better scaling on high-DPI displays
+
+## Technical Implementation
+
+### Color System
+
+CustomTkinter uses a tuple-based color system:
+```python
+fg_color=("light_color", "dark_color")  # Auto-switches based on mode
+```
+
+For fixed colors:
+```python
+fg_color="green"  # Same in light and dark mode
+hover_color="darkgreen"  # Hover state
+```
+
+### Button Sizing
+
+Consistent sizing patterns:
+```python
+# Toolbar buttons
+width=140, height=32
+
+# Action buttons
+width=120, height=40
+
+# Small buttons (toggle, etc.)
+width=60, height=24
+```
+
+### Migration Patterns
+
+**Old Pattern (tk.Button):**
+```python
+btn = tk.Button(parent, text="Text", command=cmd,
+                bg="#3498db", fg="white",
+                relief=tk.FLAT, bd=0, padx=12, pady=6)
+btn.bind('<Enter>', hover_effect)
+btn.bind('<Leave>', leave_effect)
+```
+
+**New Pattern (CTkButton):**
+```python
+btn = ctk.CTkButton(parent, text="Text", command=cmd,
+                    width=120, height=32)
+# Colors and hover effects automatic!
+```
+
+## Performance
+
+CustomTkinter has minimal performance impact:
+- Widget creation is slightly slower due to custom rendering
+- Runtime performance is identical to tkinter
+- Memory usage is comparable
+- No noticeable difference in GUI responsiveness
+
+## Backwards Compatibility
+
+The migration maintains full backwards compatibility:
+- All existing features work identically
+- File operations unchanged
+- Database integration unchanged
+- Only visual appearance improved
+
+## Credits
+
+CustomTkinter library: https://github.com/TomSchimansky/CustomTkinter
+- Modern UI framework for tkinter
+- Created by Tom Schimansky
+- MIT License

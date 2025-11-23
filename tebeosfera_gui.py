@@ -31,7 +31,11 @@ TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
 # UI Constants
 MAX_FILENAME_LENGTH = 60  # Maximum characters for filename display in dialogs
 
-# Default color scheme for the application
+# CustomTkinter button color constants
+CTK_BUTTON_ACTIVE_COLOR = ("#3B8ED0", "#1f6aa5")  # Active button color (CTk default blue)
+CTK_BUTTON_INACTIVE_COLOR = "gray50"  # Inactive button color
+
+# Default color scheme for the application (legacy, kept for compatibility)
 DEFAULT_COLORS = {
     'bg': '#f5f5f5',
     'fg': '#2c3e50',
@@ -49,6 +53,12 @@ DEFAULT_COLORS = {
     'text_dark': '#2c3e50',
     'text_light': '#7f8c8d'
 }
+
+
+def set_toggle_button_colors(active_button, inactive_button):
+    """Helper to set colors for toggle buttons (e.g., metadata view toggle)"""
+    active_button.configure(fg_color=CTK_BUTTON_ACTIVE_COLOR)  # Use active theme color
+    inactive_button.configure(fg_color=CTK_BUTTON_INACTIVE_COLOR)
 
 
 def build_series_url(series_key_or_path):
@@ -118,11 +128,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
 try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
+    import customtkinter as ctk
     from PIL import Image, ImageTk
 except ImportError as e:
-    print("Error: This GUI requires tkinter and PIL/Pillow")
-    print("Install with: pip install pillow")
+    print("Error: This GUI requires tkinter, customtkinter and PIL/Pillow")
+    print("Install with: pip install customtkinter pillow")
     sys.exit(1)
+
+# Configure customtkinter appearance only when running as main app
+def _configure_ctk_appearance():
+    ctk.set_appearance_mode("light")  # "System", "Dark", "Light"
+    ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
 
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
 SEARCH_PREVIEW_SIZE = (460, 690)
@@ -457,20 +473,19 @@ class ComicFile(object):
             return None
 
 
-class TebeoSferaGUI(tk.Tk):
+class TebeoSferaGUI(ctk.CTk):
     '''Main GUI application window'''
 
     def __init__(self):
-        tk.Tk.__init__(self)
+        # Note: appearance mode and theme are now set at module level
+        ctk.CTk.__init__(self)
 
         self.title("TebeoSfera Scraper - Comic Metadata Editor")
         self.geometry("1280x850")
         
-        # Use default color scheme
+        # No need for manual color scheme with customtkinter
+        # Keeping it for compatibility with any remaining legacy code
         self.colors = DEFAULT_COLORS.copy()
-        
-        # Configure main window style
-        self.configure(bg=self.colors['bg'])
 
         # Comic files list
         self.comic_files = []
@@ -566,80 +581,58 @@ class TebeoSferaGUI(tk.Tk):
 
     def _create_toolbar(self):
         '''Create toolbar with quick actions'''
-        toolbar = tk.Frame(self, bg=self.colors['toolbar_bg'], bd=0, relief=tk.FLAT, height=50)
+        toolbar = ctk.CTkFrame(self, corner_radius=0, height=50)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
         
         # Add padding inside toolbar
-        inner_toolbar = tk.Frame(toolbar, bg=self.colors['toolbar_bg'])
+        inner_toolbar = ctk.CTkFrame(toolbar, fg_color="transparent")
         inner_toolbar.pack(fill=tk.X, padx=10, pady=8)
 
         # File operations section
-        file_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        file_frame = ctk.CTkFrame(inner_toolbar, fg_color="transparent")
         file_frame.pack(side=tk.LEFT, padx=5)
         
-        btn_open_files = self._create_toolbar_button(file_frame, "📁 Abrir archivos", self._open_files, 
-                                    bg=self.colors['primary'], fg='white')
+        btn_open_files = ctk.CTkButton(file_frame, text="📁 Abrir archivos", command=self._open_files,
+                                       width=140, height=32)
         btn_open_files.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_open_files, "Seleccionar archivos CBZ/CBR individuales")
         
-        btn_open_dir = self._create_toolbar_button(file_frame, "📂 Abrir carpeta", self._open_directory,
-                                    bg=self.colors['primary'], fg='white')
+        btn_open_dir = ctk.CTkButton(file_frame, text="📂 Abrir carpeta", command=self._open_directory,
+                                     width=140, height=32)
         btn_open_dir.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_open_dir, "Buscar archivos CBZ/CBR en una carpeta")
 
         # Separator
-        tk.Frame(inner_toolbar, width=2, bg=self.colors['border'], height=35).pack(side=tk.LEFT, padx=10)
+        ctk.CTkFrame(inner_toolbar, width=2, height=35, fg_color="gray70").pack(side=tk.LEFT, padx=10)
 
         # Processing section
-        process_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        process_frame = ctk.CTkFrame(inner_toolbar, fg_color="transparent")
         process_frame.pack(side=tk.LEFT, padx=5)
         
-        btn_process_sel = self._create_toolbar_button(process_frame, "▶ Procesar seleccionados", self._process_selected,
-                                    bg=self.colors['success'], fg='white')
+        btn_process_sel = ctk.CTkButton(process_frame, text="▶ Procesar seleccionados", 
+                                        command=self._process_selected,
+                                        width=180, height=32, fg_color="green", hover_color="darkgreen")
         btn_process_sel.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_process_sel, "Buscar y aplicar metadatos a los cómics seleccionados")
         
-        btn_process_all = self._create_toolbar_button(process_frame, "▶▶ Procesar todos", self._process_all,
-                                    bg=self.colors['success'], fg='white')
+        btn_process_all = ctk.CTkButton(process_frame, text="▶▶ Procesar todos", 
+                                       command=self._process_all,
+                                       width=140, height=32, fg_color="green", hover_color="darkgreen")
         btn_process_all.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_process_all, "Buscar y aplicar metadatos a todos los cómics de la lista")
 
         # Separator
-        tk.Frame(inner_toolbar, width=2, bg=self.colors['border'], height=35).pack(side=tk.LEFT, padx=10)
+        ctk.CTkFrame(inner_toolbar, width=2, height=35, fg_color="gray70").pack(side=tk.LEFT, padx=10)
 
         # Options section
-        options_frame = tk.Frame(inner_toolbar, bg=self.colors['toolbar_bg'])
+        options_frame = ctk.CTkFrame(inner_toolbar, fg_color="transparent")
         options_frame.pack(side=tk.LEFT, padx=5)
         
         self.recursive_var = tk.BooleanVar(value=True)
-        cb = tk.Checkbutton(options_frame, text="📂 Incluir subdirectorios", variable=self.recursive_var,
-                          bg=self.colors['toolbar_bg'], fg=self.colors['text_dark'],
-                          font=('Arial', 9), selectcolor='white', activebackground=self.colors['toolbar_bg'])
+        cb = ctk.CTkCheckBox(options_frame, text="📂 Incluir subdirectorios", 
+                            variable=self.recursive_var)
         cb.pack(side=tk.LEFT, padx=5)
         ToolTip(cb, "Buscar archivos en subdirectorios al abrir una carpeta")
-    
-    def _create_toolbar_button(self, parent, text, command, bg='#3498db', fg='white'):
-        '''Create a styled toolbar button with hover effect'''
-        btn = tk.Button(parent, text=text, command=command,
-                       bg=bg, fg=fg, font=('Arial', 9, 'bold'),
-                       relief=tk.FLAT, bd=0, padx=12, pady=6,
-                       cursor='hand2', activebackground=self.colors['primary_hover'],
-                       activeforeground='white')
-        
-        # Add hover effect
-        def on_enter(e):
-            if bg == self.colors['primary']:
-                btn['bg'] = self.colors['primary_hover']
-            elif bg == self.colors['success']:
-                btn['bg'] = '#229954'
-        
-        def on_leave(e):
-            btn['bg'] = bg
-        
-        btn.bind('<Enter>', on_enter)
-        btn.bind('<Leave>', on_leave)
-        
-        return btn
 
     def _create_main_panel(self):
         '''Create main content area'''
@@ -722,29 +715,23 @@ class TebeoSferaGUI(tk.Tk):
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Right side: page navigation controls
-        nav_controls = tk.Frame(header, bg=self.colors['card_bg'])
+        nav_controls = ctk.CTkFrame(header, fg_color="transparent")
         nav_controls.pack(side=tk.RIGHT)
         
-        self.prev_page_button = tk.Button(nav_controls, text="◀",
+        self.prev_page_button = ctk.CTkButton(nav_controls, text="◀",
                                           command=self._show_prev_page, state=tk.DISABLED,
-                                          width=3, font=('Arial', 10, 'bold'),
-                                          bg=self.colors['secondary'], fg='white',
-                                          relief=tk.FLAT, bd=0, cursor='hand2',
-                                          activebackground=self.colors['text_light'])
+                                          width=40, height=32,
+                                          fg_color="gray50", hover_color="gray60")
         self.prev_page_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        self.page_info_label = tk.Label(nav_controls, text="0/0", 
-                                       font=('Arial', 9, 'bold'), width=8,
-                                       bg=self.colors['card_bg'],
-                                       fg=self.colors['text_dark'])
+        self.page_info_label = ctk.CTkLabel(nav_controls, text="0/0", 
+                                       width=60)
         self.page_info_label.pack(side=tk.LEFT, padx=5)
         
-        self.next_page_button = tk.Button(nav_controls, text="▶",
+        self.next_page_button = ctk.CTkButton(nav_controls, text="▶",
                                           command=self._show_next_page, state=tk.DISABLED,
-                                          width=3, font=('Arial', 10, 'bold'),
-                                          bg=self.colors['secondary'], fg='white',
-                                          relief=tk.FLAT, bd=0, cursor='hand2',
-                                          activebackground=self.colors['text_light'])
+                                          width=40, height=32,
+                                          fg_color="gray50", hover_color="gray60")
         self.next_page_button.pack(side=tk.LEFT, padx=(5, 0))
         
         tk.Frame(preview_section, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
@@ -798,18 +785,15 @@ class TebeoSferaGUI(tk.Tk):
         toggle_frame = tk.Frame(metadata_header, bg=self.colors['card_bg'])
         toggle_frame.pack(side=tk.RIGHT)
         
-        self.metadata_pretty_button = tk.Button(toggle_frame, text="Bonito", 
+        self.metadata_pretty_button = ctk.CTkButton(toggle_frame, text="Bonito", 
                                                command=lambda: self._toggle_metadata_view("pretty"),
-                                               bg=self.colors['primary'], fg='white',
-                                               relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                               font=('Arial', 8, 'bold'), cursor='hand2')
+                                               width=60, height=24)
         self.metadata_pretty_button.pack(side=tk.LEFT, padx=(0, 3))
         
-        self.metadata_xml_button = tk.Button(toggle_frame, text="XML",
+        self.metadata_xml_button = ctk.CTkButton(toggle_frame, text="XML",
                                             command=lambda: self._toggle_metadata_view("xml"),
-                                            bg=self.colors['secondary'], fg='white',
-                                            relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                            font=('Arial', 8, 'bold'), cursor='hand2')
+                                            width=50, height=24,
+                                            fg_color="gray50", hover_color="gray60")
         self.metadata_xml_button.pack(side=tk.LEFT)
         
         # Metadata text with better styling
@@ -833,50 +817,32 @@ class TebeoSferaGUI(tk.Tk):
         self.current_metadata_dict = None
 
         # ========== SECCIÓN 3: BOTONES DE ACCIÓN ==========
-        button_frame = tk.Frame(right_frame, bg=self.colors['card_bg'])
+        button_frame = ctk.CTkFrame(right_frame, fg_color="transparent")
         button_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
         # Ensure buttons don't shrink below their natural size
         button_frame.pack_propagate(False)
-        button_frame.config(height=50)
+        button_frame.configure(height=50)
 
         # Create styled action buttons with minimum width
-        btn_search = tk.Button(button_frame, text="🔍 Buscar en TebeoSfera", 
+        btn_search = ctk.CTkButton(button_frame, text="🔍 Buscar en TebeoSfera", 
                               command=self._search_current,
-                              bg=self.colors['primary'], fg='white',
-                              font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                              padx=10, pady=10, cursor='hand2',
-                              activebackground=self.colors['primary_hover'],
-                              wraplength=150)
+                              height=40)
         btn_search.pack(side=tk.LEFT, padx=(0, 5), fill=tk.BOTH, expand=True)
         ToolTip(btn_search, "Buscar metadatos en tebeosfera.com")
         
-        btn_generate = tk.Button(button_frame, text="💾 Generar ComicInfo.xml", 
+        btn_generate = ctk.CTkButton(button_frame, text="💾 Generar ComicInfo.xml", 
                                 command=self._generate_xml_current,
-                                bg=self.colors['success'], fg='white',
-                                font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                                padx=10, pady=10, cursor='hand2',
-                                activebackground='#229954',
-                                wraplength=150)
+                                fg_color="green", hover_color="darkgreen",
+                                height=40)
         btn_generate.pack(side=tk.LEFT, padx=5, fill=tk.BOTH, expand=True)
         ToolTip(btn_generate, "Generar e inyectar ComicInfo.xml en el archivo")
         
-        btn_browser = tk.Button(button_frame, text="🌐 Abrir en navegador", 
+        btn_browser = ctk.CTkButton(button_frame, text="🌐 Abrir en navegador", 
                                command=self._open_current_in_browser,
-                               bg=self.colors['warning'], fg='white',
-                               font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                               padx=10, pady=10, cursor='hand2',
-                               activebackground='#d68910',
-                               wraplength=150)
+                               fg_color="orange", hover_color="darkorange",
+                               height=40)
         btn_browser.pack(side=tk.LEFT, padx=(5, 0), fill=tk.BOTH, expand=True)
         ToolTip(btn_browser, "Abrir página de TebeoSfera en el navegador")
-        
-        # Add hover effects to action buttons
-        for btn, hover_color in [(btn_search, self.colors['primary_hover']),
-                                 (btn_generate, self.colors['success_hover']),
-                                 (btn_browser, self.colors['warning_hover'])]:
-            original_color = btn['bg']
-            btn.bind('<Enter>', lambda e, b=btn, c=hover_color: b.config(bg=c))
-            btn.bind('<Leave>', lambda e, b=btn, c=original_color: b.config(bg=c))
         
         # ========== PANEL INFERIOR: DETALLES + LOG (horizontal) ==========
         bottom_panel = tk.Frame(paned, bg=self.colors['bg'])
@@ -916,17 +882,15 @@ class TebeoSferaGUI(tk.Tk):
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Log action buttons
-        btn_frame = tk.Frame(log_header, bg=self.colors['card_bg'])
+        btn_frame = ctk.CTkFrame(log_header, fg_color="transparent")
         btn_frame.pack(side=tk.RIGHT)
         
-        tk.Button(btn_frame, text="💾 Guardar", command=self._save_log,
-                 bg=self.colors['secondary'], fg='white',
-                 font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
-                 padx=8, pady=3, cursor='hand2').pack(side=tk.RIGHT, padx=(5, 0))
-        tk.Button(btn_frame, text="🗑️ Limpiar", command=self._clear_log,
-                 bg=self.colors['danger'], fg='white',
-                 font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
-                 padx=8, pady=3, cursor='hand2').pack(side=tk.RIGHT)
+        ctk.CTkButton(btn_frame, text="💾 Guardar", command=self._save_log,
+                 width=80, height=24,
+                 fg_color="gray50", hover_color="gray60").pack(side=tk.RIGHT, padx=(5, 0))
+        ctk.CTkButton(btn_frame, text="🗑️ Limpiar", command=self._clear_log,
+                 width=80, height=24,
+                 fg_color="red", hover_color="darkred").pack(side=tk.RIGHT)
         
         tk.Frame(log_card, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
         
@@ -957,25 +921,16 @@ class TebeoSferaGUI(tk.Tk):
 
     def _create_status_bar(self):
         '''Create status bar'''
-        status_container = tk.Frame(self, bg=self.colors['toolbar_bg'], bd=0)
+        status_container = ctk.CTkFrame(self, corner_radius=0)
         status_container.pack(side=tk.BOTTOM, fill=tk.X)
         
-        self.status_bar = tk.Label(status_container, text="✓ Listo", 
-                                   bd=0, relief=tk.FLAT, anchor=tk.W,
-                                   bg=self.colors['toolbar_bg'],
-                                   fg=self.colors['text_dark'],
-                                   font=('Arial', 9), padx=10, pady=6)
+        self.status_bar = ctk.CTkLabel(status_container, text="✓ Listo", 
+                                       anchor="w",
+                                       padx=10, pady=6)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # Progress bar with better styling
-        self.progress = ttk.Progressbar(status_container, orient=tk.HORIZONTAL, mode='determinate')
-        # Style the progress bar
-        style = ttk.Style()
-        style.theme_use('default')
-        style.configure("TProgressbar", 
-                       thickness=20,
-                       troughcolor=self.colors['border'],
-                       background=self.colors['primary'])
+        # Progress bar using customtkinter
+        self.progress = ctk.CTkProgressBar(status_container)
         # Initially hidden
 
     def _open_files(self):
@@ -1128,13 +1083,11 @@ class TebeoSferaGUI(tk.Tk):
         '''Toggle between XML and Pretty view'''
         self.metadata_view_mode.set(mode)
         
-        # Update button styles with new color scheme
+        # Update button styles using helper
         if mode == "xml":
-            self.metadata_xml_button.config(bg=self.colors['primary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['secondary'], fg='white')
+            set_toggle_button_colors(self.metadata_xml_button, self.metadata_pretty_button)
         else:
-            self.metadata_xml_button.config(bg=self.colors['secondary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['primary'], fg='white')
+            set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
         
         self._render_metadata_view()
     
@@ -1292,23 +1245,23 @@ class TebeoSferaGUI(tk.Tk):
         # Always show the buttons frame and update info
         if hasattr(self, 'page_info_label'):
             if total > 0:
-                self.page_info_label.config(text=f"{current + 1}/{total}")
+                self.page_info_label.configure(text=f"{current + 1}/{total}")
             else:
-                self.page_info_label.config(text="0/0")
+                self.page_info_label.configure(text="0/0")
         
         # Enable/disable buttons based on page count and position
         if total > 1:
             # Enable prev if not on first page
-            self.prev_page_button.config(
+            self.prev_page_button.configure(
                 state=tk.NORMAL if current > 0 else tk.DISABLED)
             # Enable next if not on last page
-            self.next_page_button.config(
+            self.next_page_button.configure(
                 state=tk.NORMAL if current < total - 1 else tk.DISABLED)
             self._log(f"📖 Navegación habilitada: página {current + 1} de {total}")
         else:
             # Disable both if only 1 or 0 pages
-            self.prev_page_button.config(state=tk.DISABLED)
-            self.next_page_button.config(state=tk.DISABLED)
+            self.prev_page_button.configure(state=tk.DISABLED)
+            self.next_page_button.configure(state=tk.DISABLED)
             if total == 1:
                 self._log(f"ℹ️ Cómic con una sola página - navegación deshabilitada")
 
@@ -1507,8 +1460,7 @@ class TebeoSferaGUI(tk.Tk):
 
         # Show progress bar
         self.progress.pack(side=tk.BOTTOM, fill=tk.X, before=self.status_bar)
-        self.progress['maximum'] = len(indices)
-        self.progress['value'] = 0
+        self.progress.set(0)  # CTkProgressBar uses 0.0-1.0 range
 
         # Process comics one by one
         self._batch_process_next(indices, 0)
@@ -1527,10 +1479,12 @@ class TebeoSferaGUI(tk.Tk):
         self.current_comic_index = index
         comic = self.comic_files[index]
 
-        # Update progress
-        self.progress['value'] = current_index + 1
+        # Update progress (calculate as fraction: current/total)
+        total = len(indices)
+        progress_value = (current_index + 1) / total
+        self.progress.set(progress_value)
         self._update_status("Procesando {0}/{1}: {2}".format(
-            current_index + 1, len(indices), comic.filename))
+            current_index + 1, total, comic.filename))
 
         # If comic already has metadata, generate XML directly
         if comic.metadata and comic.selected_issue:
@@ -1575,7 +1529,7 @@ class TebeoSferaGUI(tk.Tk):
 
     def _update_status(self, message):
         '''Update status bar message'''
-        self.status_bar.config(text=message)
+        self.status_bar.configure(text=message)
 
     def _process_queue(self):
         '''Process updates from background threads'''
@@ -1687,19 +1641,17 @@ class TebeoSferaGUI(tk.Tk):
                 messagebox.showerror("Error", f"Error guardando log:\n{str(e)}")
 
 
-class SearchDialog(tk.Toplevel):
+class SearchDialog(ctk.CTkToplevel):
     '''Dialog for searching and selecting issues from TebeoSfera'''
 
     def __init__(self, parent, comic, db):
-        tk.Toplevel.__init__(self, parent)
+        ctk.CTkToplevel.__init__(self, parent)
 
         # Color scheme (inherit from parent if available)
         if hasattr(parent, 'colors'):
             self.colors = parent.colors.copy()
         else:
             self.colors = DEFAULT_COLORS.copy()
-        
-        self.configure(bg=self.colors['bg'])
 
         truncated_filename = (comic.filename[:MAX_FILENAME_LENGTH] + '...' 
                              if len(comic.filename) > MAX_FILENAME_LENGTH 
@@ -1731,31 +1683,23 @@ class SearchDialog(tk.Toplevel):
     def _create_ui(self):
         '''Create search dialog UI with improved styling'''
         # Search frame with card styling
-        search_container = tk.Frame(self, bg=self.colors['bg'])
+        search_container = ctk.CTkFrame(self, fg_color="transparent")
         search_container.pack(fill=tk.X, padx=10, pady=10)
         
-        search_card = tk.Frame(search_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        search_card = ctk.CTkFrame(search_container)
         search_card.pack(fill=tk.X)
         
-        search_frame = tk.Frame(search_card, bg=self.colors['card_bg'])
+        search_frame = ctk.CTkFrame(search_card, fg_color="transparent")
         search_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        tk.Label(search_frame, text="🔎 Buscar:", font=('Arial', 10, 'bold'),
-                bg=self.colors['card_bg'], fg=self.colors['text_dark']).pack(side=tk.LEFT, padx=(0, 10))
+        ctk.CTkLabel(search_frame, text="🔎 Buscar:", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=(0, 10))
         
-        self.search_entry = tk.Entry(search_frame, font=('Arial', 10),
-                                     relief=tk.FLAT, bd=1,
-                                     highlightthickness=1,
-                                     highlightbackground=self.colors['border'],
-                                     highlightcolor=self.colors['primary'])
-        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=6)
+        self.search_entry = ctk.CTkEntry(search_frame, height=35)
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.search_entry.bind('<Return>', lambda e: self._search())
 
-        search_btn = tk.Button(search_frame, text="🔍 Buscar", command=self._search,
-                              bg=self.colors['primary'], fg='white',
-                              font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                              padx=15, pady=8, cursor='hand2',
-                              activebackground=self.colors['primary_hover'])
+        search_btn = ctk.CTkButton(search_frame, text="🔍 Buscar", command=self._search,
+                              width=120, height=35)
         search_btn.pack(side=tk.LEFT, padx=(5, 0))
 
         # Main panel - split between results and preview
@@ -1875,14 +1819,13 @@ class SearchDialog(tk.Toplevel):
         self.preview_label = tk.Label(self.preview_canvas)  # Dummy label for image reference
         
         # Preview actions (browser button)
-        preview_actions = tk.Frame(cover_container, bg=self.colors['card_bg'])
+        preview_actions = ctk.CTkFrame(cover_container, fg_color="transparent")
         preview_actions.pack(fill=tk.X)
 
-        self.open_series_button = tk.Button(preview_actions, text="🌐 Abrir en navegador",
+        self.open_series_button = ctk.CTkButton(preview_actions, text="🌐 Abrir en navegador",
                                            command=self._open_selected_series, state=tk.DISABLED,
-                                           bg=self.colors['warning'], fg='white',
-                                           font=('Arial', 8, 'bold'), relief=tk.FLAT, bd=0,
-                                           padx=10, pady=6, cursor='hand2')
+                                           fg_color="orange", hover_color="darkorange",
+                                           height=32)
         self.open_series_button.pack(fill=tk.X)
         
         # Right: Metadata display
@@ -1897,23 +1840,20 @@ class SearchDialog(tk.Toplevel):
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Toggle buttons for metadata view
-        toggle_frame = tk.Frame(metadata_header, bg=self.colors['card_bg'])
+        toggle_frame = ctk.CTkFrame(metadata_header, fg_color="transparent")
         toggle_frame.pack(side=tk.RIGHT)
         
         self.metadata_view_mode = tk.StringVar(value='pretty')
         
-        self.metadata_pretty_button = tk.Button(toggle_frame, text="Bonito",
+        self.metadata_pretty_button = ctk.CTkButton(toggle_frame, text="Bonito",
                                                command=lambda: self._toggle_metadata_view(),
-                                               bg=self.colors['primary'], fg='white',
-                                               relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                               font=('Arial', 8, 'bold'), cursor='hand2')
+                                               width=60, height=24)
         self.metadata_pretty_button.pack(side=tk.LEFT, padx=(0, 3))
         
-        self.metadata_xml_button = tk.Button(toggle_frame, text="XML",
+        self.metadata_xml_button = ctk.CTkButton(toggle_frame, text="XML",
                                             command=lambda: self._toggle_metadata_view(),
-                                            bg=self.colors['secondary'], fg='white',
-                                            relief=tk.FLAT, bd=0, padx=8, pady=3,
-                                            font=('Arial', 8, 'bold'), cursor='hand2')
+                                            width=50, height=24,
+                                            fg_color="gray50", hover_color="gray60")
         self.metadata_xml_button.pack(side=tk.LEFT)
         
         # Metadata display with scrollbar
@@ -1945,39 +1885,33 @@ class SearchDialog(tk.Toplevel):
         
         tk.Frame(apply_container, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=(0, 10))
         
-        self.apply_xml_button = tk.Button(apply_container, text="💾 Aplicar ComicInfo.xml al archivo", 
+        self.apply_xml_button = ctk.CTkButton(apply_container, text="💾 Aplicar ComicInfo.xml al archivo", 
                                           command=self._apply_comicinfo_xml, state=tk.DISABLED,
-                                          bg=self.colors['success'], fg='white',
-                                          font=('Arial', 10, 'bold'), relief=tk.FLAT, bd=0,
-                                          padx=15, pady=12, cursor='hand2',
-                                          activebackground='#229954')
+                                          fg_color="green", hover_color="darkgreen",
+                                          height=40)
         self.apply_xml_button.pack(fill=tk.X)
 
         # Bottom button frame with card styling
-        button_container = tk.Frame(self, bg=self.colors['bg'])
+        button_container = ctk.CTkFrame(self, fg_color="transparent")
         button_container.pack(fill=tk.X, padx=10, pady=(0, 10))
         
-        button_card = tk.Frame(button_container, bg=self.colors['card_bg'], relief=tk.FLAT, bd=0)
+        button_card = ctk.CTkFrame(button_container)
         button_card.pack(fill=tk.X)
         
-        button_frame = tk.Frame(button_card, bg=self.colors['card_bg'])
+        button_frame = ctk.CTkFrame(button_card, fg_color="transparent")
         button_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        close_btn = tk.Button(button_frame, text="✗ Cerrar", command=self.destroy,
-                             bg=self.colors['secondary'], fg='white',
-                             font=('Arial', 9, 'bold'), relief=tk.FLAT, bd=0,
-                             padx=20, pady=8, cursor='hand2',
-                             activebackground=self.colors['text_light'])
+        close_btn = ctk.CTkButton(button_frame, text="✗ Cerrar", command=self.destroy,
+                             width=100, height=35,
+                             fg_color="gray50", hover_color="gray60")
         close_btn.pack(side=tk.RIGHT)
 
         # Status label with better styling
-        status_container = tk.Frame(self, bg=self.colors['toolbar_bg'])
+        status_container = ctk.CTkFrame(self, corner_radius=0)
         status_container.pack(fill=tk.X, side=tk.BOTTOM)
         
-        self.status_label = tk.Label(status_container, text="", 
-                                     bg=self.colors['toolbar_bg'],
-                                     fg=self.colors['text_dark'],
-                                     font=('Arial', 9), anchor=tk.W,
+        self.status_label = ctk.CTkLabel(status_container, text="", 
+                                     anchor="w",
                                      padx=15, pady=8)
         self.status_label.pack(fill=tk.X)
         self._update_open_buttons()
@@ -2013,20 +1947,20 @@ class SearchDialog(tk.Toplevel):
         '''Enable/disable open buttons based on current selections'''
         if hasattr(self, 'open_series_button'):
             if self.selected_series:
-                self.open_series_button.config(state=tk.NORMAL)
+                self.open_series_button.configure(state=tk.NORMAL)
                 # Cambiar texto del botón según el tipo
                 result_type = getattr(self.selected_series, 'type_s', 'collection')
                 if result_type == 'issue':
-                    self.open_series_button.config(text="🌐 Abrir ejemplar")
+                    self.open_series_button.configure(text="🌐 Abrir ejemplar")
                 elif result_type == 'saga':
-                    self.open_series_button.config(text="🌐 Abrir saga")
+                    self.open_series_button.configure(text="🌐 Abrir saga")
                 else:
-                    self.open_series_button.config(text="🌐 Abrir colección")
+                    self.open_series_button.configure(text="🌐 Abrir colección")
             elif self.selected_issue:
-                self.open_series_button.config(state=tk.NORMAL)
-                self.open_series_button.config(text="🌐 Abrir ejemplar")
+                self.open_series_button.configure(state=tk.NORMAL)
+                self.open_series_button.configure(text="🌐 Abrir ejemplar")
             else:
-                self.open_series_button.config(state=tk.DISABLED)
+                self.open_series_button.configure(state=tk.DISABLED)
 
     def _open_selected_series(self):
         '''Open selected series/issue in browser'''
@@ -2171,8 +2105,8 @@ class SearchDialog(tk.Toplevel):
         tk.Button(button_frame, text="Buscar", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Cancelar", command=on_cancel, width=12).pack(side=tk.LEFT, padx=5)
         
-        # Bind Enter key
-        entry.bind('<Return>', lambda e: on_ok())
+        # Bind Enter key - return 'break' to stop event propagation
+        entry.bind('<Return>', lambda e: on_ok() or 'break')
         edit_dialog.bind('<Escape>', lambda e: on_cancel())
 
     def _search(self):
@@ -2194,7 +2128,7 @@ class SearchDialog(tk.Toplevel):
         
         # Add loading placeholder
         loading_item = self.results_tree.insert('', 'end', text="Buscando...", tags=('loading',))
-        self.status_label.config(text="Conectando con TebeoSfera...")
+        self.status_label.configure(text="Conectando con TebeoSfera...")
         self.update()
         
         # Log the search
@@ -2205,7 +2139,7 @@ class SearchDialog(tk.Toplevel):
             try:
                 # Update status
                 def update_status(msg):
-                    self.after(0, lambda: self.status_label.config(text=msg))
+                    self.after(0, lambda: self.status_label.configure(text=msg))
                     self.after(0, lambda: self._log(msg))
                 
                 update_status("Conectando con TebeoSfera...")
@@ -2248,7 +2182,7 @@ class SearchDialog(tk.Toplevel):
                         status_msg = "Sin resultados"
                         if info_line:
                             status_msg += f"\n{info_line}"
-                        self.status_label.config(text=status_msg)
+                        self.status_label.configure(text=status_msg)
                         self._log("❌ Sin resultados encontrados")
                         return
 
@@ -2264,36 +2198,39 @@ class SearchDialog(tk.Toplevel):
                         type_attr = getattr(r, 'type_s', 'unknown')
                         self._log(f"  [{i+1}] type_s='{type_attr}', name='{r.series_name_s[:50]}'")
                     
-                    # Insert sagas first
-                    if sagas:
-                        sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
-                        self.tree_item_data[sagas_parent] = ('header', None)
-                        for result in sagas:
-                            display_name = result.series_name_s
-                            item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
-                            # Add placeholder child to enable expansion
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
-                            self.tree_item_data[item_id] = ('saga', result)
-                    
-                    # Insert collections
-                    if collections:
-                        collections_parent = self.results_tree.insert('', 'end', text=f"📚 Colecciones ({len(collections)})", tags=('header',))
-                        self.tree_item_data[collections_parent] = ('header', None)
-                        for result in collections:
-                            display_name = result.series_name_s
-                            item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
-                            # Add placeholder child to enable expansion
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
-                            self.tree_item_data[item_id] = ('collection', result)
-                    
-                    # Insert issues
-                    if issues:
-                        issues_parent = self.results_tree.insert('', 'end', text=f"📖 Issues ({len(issues)})", tags=('header',))
-                        self.tree_item_data[issues_parent] = ('header', None)
-                        for result in issues:
-                            display_name = result.series_name_s
-                            item_id = self.results_tree.insert(issues_parent, 'end', text=display_name, tags=('issue',))
-                            self.tree_item_data[item_id] = ('issue', result)
+                    # Only insert results if NOT doing image comparison
+                    # (image comparison will insert them with scores)
+                    if not self.comic.cover_image:
+                        # Insert sagas first
+                        if sagas:
+                            sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
+                            self.tree_item_data[sagas_parent] = ('header', None)
+                            for result in sagas:
+                                display_name = result.series_name_s
+                                item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
+                                # Add placeholder child to enable expansion
+                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                self.tree_item_data[item_id] = ('saga', result)
+                        
+                        # Insert collections
+                        if collections:
+                            collections_parent = self.results_tree.insert('', 'end', text=f"📚 Colecciones ({len(collections)})", tags=('header',))
+                            self.tree_item_data[collections_parent] = ('header', None)
+                            for result in collections:
+                                display_name = result.series_name_s
+                                item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
+                                # Add placeholder child to enable expansion
+                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                self.tree_item_data[item_id] = ('collection', result)
+                        
+                        # Insert issues
+                        if issues:
+                            issues_parent = self.results_tree.insert('', 'end', text=f"📖 Issues ({len(issues)})", tags=('header',))
+                            self.tree_item_data[issues_parent] = ('header', None)
+                            for result in issues:
+                                display_name = result.series_name_s
+                                item_id = self.results_tree.insert(issues_parent, 'end', text=display_name, tags=('issue',))
+                                self.tree_item_data[item_id] = ('issue', result)
 
                     # Count by type
                     type_counts = {'issue': 0, 'collection': 0, 'saga': 0}
@@ -2307,7 +2244,7 @@ class SearchDialog(tk.Toplevel):
                     status_text = f"{len(results)} resultados: {type_counts['issue']} issues, {type_counts['collection']} series, {type_counts['saga']} sagas"
                     if info_line:
                         status_text += f"\n{info_line}"
-                    self.status_label.config(text=status_text + " - Comparando portadas...")
+                    self.status_label.configure(text=status_text + " - Comparando portadas...")
                     self._log(f"✅ {len(results)} resultados encontrados")
                     self._log(f"   📖 {type_counts['issue']} issues individuales (con metadata completa)")
                     self._log(f"   📚 {type_counts['collection']} colecciones (listas de issues)")
@@ -2319,13 +2256,13 @@ class SearchDialog(tk.Toplevel):
                     if self.comic.cover_image:
                         self._compare_covers_with_results(results)
                     else:
-                        self.status_label.config(text=f"{len(results)} series encontradas")
+                        self.status_label.configure(text=f"{len(results)} series encontradas")
                         self._log("ℹ️ Sin portada disponible para comparación")
 
                 self.after(0, update_results)
             except Exception as e:
                 error_msg = f"Error en búsqueda: {str(e)}"
-                self.after(0, lambda: self.status_label.config(text=error_msg))
+                self.after(0, lambda: self.status_label.configure(text=error_msg))
                 self.after(0, lambda: self._log(f"❌ {error_msg}"))
                 self.after(0, lambda: messagebox.showerror("Error", error_msg))
 
@@ -2340,7 +2277,7 @@ class SearchDialog(tk.Toplevel):
             self.similarity_scores = []
             
             def update_status(msg):
-                self.after(0, lambda: self.status_label.config(text=msg))
+                self.after(0, lambda: self.status_label.configure(text=msg))
                 self.after(0, lambda: self._log(msg))
 
             update_status(f"Descargando {len(results)} portadas para comparar...")
@@ -2392,7 +2329,7 @@ class SearchDialog(tk.Toplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(sagas_parent, 'end', text=display_text, tags=('saga',))
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('saga', result)
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
@@ -2407,7 +2344,7 @@ class SearchDialog(tk.Toplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(collections_parent, 'end', text=display_text, tags=('collection',))
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('collection', result)
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
@@ -2436,10 +2373,10 @@ class SearchDialog(tk.Toplevel):
                         self._show_series_preview(self.selected_series)
 
                         status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
-                        self.status_label.config(text=status_msg)
+                        self.status_label.configure(text=status_msg)
                         self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
                     else:
-                        self.status_label.config(text=f"{len(results)} resultados encontrados")
+                        self.status_label.configure(text=f"{len(results)} resultados encontrados")
                         self._log("ℹ️ Comparación completada")
 
                 self.after(0, update_ui)
@@ -2574,7 +2511,7 @@ class SearchDialog(tk.Toplevel):
         info += "\nExpande el nodo para ver los issues."
         self.metadata_display.insert('1.0', info)
         self.metadata_display.config(state=tk.DISABLED)
-        self.apply_xml_button.config(state=tk.DISABLED)
+        self.apply_xml_button.configure(state=tk.DISABLED)
 
         # Load cover in background
         def load_cover():
@@ -2672,7 +2609,7 @@ class SearchDialog(tk.Toplevel):
         )
         self.metadata_display.delete('1.0', tk.END)
         self.metadata_display.insert('1.0', 'Cargando metadatos...')
-        self.apply_xml_button.config(state=tk.DISABLED)
+        self.apply_xml_button.configure(state=tk.DISABLED)
         self.update()
         
         # Load cover and metadata in background
@@ -2743,7 +2680,7 @@ class SearchDialog(tk.Toplevel):
                     self._toggle_metadata_view()
                     
                     # Enable apply button
-                    self.apply_xml_button.config(state=tk.NORMAL)
+                    self.apply_xml_button.configure(state=tk.NORMAL)
                 else:
                     self.metadata_display.delete('1.0', tk.END)
                     self.metadata_display.insert('1.0', 'Error: No se pudieron obtener los metadatos')
@@ -2804,13 +2741,11 @@ class SearchDialog(tk.Toplevel):
         new_mode = 'xml' if current == 'pretty' else 'pretty'
         self.metadata_view_mode.set(new_mode)
         
-        # Update button styles
+        # Update button styles using helper
         if new_mode == 'xml':
-            self.metadata_xml_button.config(bg=self.colors['primary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['secondary'], fg='white')
+            set_toggle_button_colors(self.metadata_xml_button, self.metadata_pretty_button)
         else:
-            self.metadata_xml_button.config(bg=self.colors['secondary'], fg='white')
-            self.metadata_pretty_button.config(bg=self.colors['primary'], fg='white')
+            set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
         
         # Update display
         self.metadata_display.config(state=tk.NORMAL)
@@ -2958,15 +2893,15 @@ class SearchDialog(tk.Toplevel):
             return
 
         self.mode = 'issues'
-        self.back_button.config(state=tk.NORMAL)
+        self.back_button.configure(state=tk.NORMAL)
         self.results_label.config(text="Issues de '{0}':".format(self.selected_series.series_name_s))
-        self.select_button.config(text="✓ Seleccionar Issue", command=self._select_issue)
+        self.select_button.configure(text="✓ Seleccionar Issue", command=self._select_issue)
         self.selected_issue = None
         self._update_open_buttons()
 
         self.results_listbox.delete(0, tk.END)
         self.results_listbox.insert(tk.END, "Cargando issues...")
-        self.status_label.config(text="Obteniendo issues de la serie...")
+        self.status_label.configure(text="Obteniendo issues de la serie...")
         self.update()
 
         # Query issues in background
@@ -2979,7 +2914,7 @@ class SearchDialog(tk.Toplevel):
 
                 if not issues:
                     self.results_listbox.insert(tk.END, "Sin issues encontrados")
-                    self.status_label.config(text="Sin issues")
+                    self.status_label.configure(text="Sin issues")
                     return
 
                 # Display issues first
@@ -2987,13 +2922,13 @@ class SearchDialog(tk.Toplevel):
                     display_text = "#{0} - {1}".format(issue.issue_num_s, issue.title_s)
                     self.results_listbox.insert(tk.END, display_text)
 
-                self.status_label.config(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
+                self.status_label.configure(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
 
                 # Start image comparison if comic has a cover
                 if self.comic.cover_image:
                     self._compare_covers_with_issues(issues)
                 else:
-                    self.status_label.config(text="{0} issues encontrados".format(len(issues)))
+                    self.status_label.configure(text="{0} issues encontrados".format(len(issues)))
 
             self.after(0, update_issues)
 
@@ -3047,11 +2982,11 @@ class SearchDialog(tk.Toplevel):
                         self._show_issue_preview(self.selected_issue)
 
                         best_score = self.similarity_scores[self.best_match_index]
-                        self.status_label.config(
+                        self.status_label.configure(
                             text="Mejor match encontrado: {0:.0f}% similar (⭐ marcado)".format(best_score)
                         )
                     else:
-                        self.status_label.config(text="{0} issues encontrados".format(len(issues)))
+                        self.status_label.configure(text="{0} issues encontrados".format(len(issues)))
 
                 self.after(0, update_ui)
 
@@ -3093,9 +3028,9 @@ class SearchDialog(tk.Toplevel):
     def _back_to_series(self):
         '''Go back to series search results'''
         self.mode = 'series'
-        self.back_button.config(state=tk.DISABLED)
+        self.back_button.configure(state=tk.DISABLED)
         self.results_label.config(text="Series encontradas:")
-        self.select_button.config(text="Ver Issues →", command=self._view_issues)
+        self.select_button.configure(text="Ver Issues →", command=self._view_issues)
         self.selected_issue = None
         self._update_open_buttons()
 
@@ -3112,10 +3047,10 @@ class SearchDialog(tk.Toplevel):
 
         if self.best_match_index >= 0 and self.best_match_index < len(self.similarity_scores):
             best_score = self.similarity_scores[self.best_match_index]
-            self.status_label.config(text="{0} series encontradas - Mejor match: {1:.0f}% similar".format(
+            self.status_label.configure(text="{0} series encontradas - Mejor match: {1:.0f}% similar".format(
                 len(self.search_results), best_score))
         else:
-            self.status_label.config(text="{0} series encontradas".format(len(self.search_results)))
+            self.status_label.configure(text="{0} series encontradas".format(len(self.search_results)))
             
         # Update preview label size info
         self.preview_label.config(text="Selecciona un resultado para ver su portada\n(Vista previa ampliada)")
@@ -3126,7 +3061,7 @@ class SearchDialog(tk.Toplevel):
             messagebox.showwarning("Advertencia", "Selecciona un issue primero")
             return
 
-        self.status_label.config(text="Obteniendo metadatos completos...")
+        self.status_label.configure(text="Obteniendo metadatos completos...")
         self.update()
 
         # Query full issue details in background
@@ -3140,13 +3075,13 @@ class SearchDialog(tk.Toplevel):
                     self.comic.selected_issue = self.selected_issue
                     self.comic.status = 'selected'
 
-                    self.status_label.config(text="Metadatos obtenidos correctamente")
+                    self.status_label.configure(text="Metadatos obtenidos correctamente")
                     messagebox.showinfo("Éxito",
                         "Issue seleccionado:\n{0} #{1}\n\nAhora puedes generar el ComicInfo.xml".format(
                             issue.series_name_s, issue.issue_num_s))
                     self.destroy()
                 else:
-                    self.status_label.config(text="Error obteniendo metadatos")
+                    self.status_label.configure(text="Error obteniendo metadatos")
                     messagebox.showerror("Error", "No se pudieron obtener los metadatos del issue")
 
             self.after(0, complete_selection)
@@ -3218,7 +3153,7 @@ class BatchSearchDialog(SearchDialog):
             messagebox.showwarning("Advertencia", "Selecciona un issue primero")
             return
 
-        self.status_label.config(text="Obteniendo metadatos completos...")
+        self.status_label.configure(text="Obteniendo metadatos completos...")
         self.update()
 
         # Query full issue details in background
@@ -3232,11 +3167,11 @@ class BatchSearchDialog(SearchDialog):
                     self.comic.selected_issue = self.selected_issue
                     self.comic.status = 'selected'
 
-                    self.status_label.config(text="Metadatos obtenidos correctamente")
+                    self.status_label.configure(text="Metadatos obtenidos correctamente")
                     # Auto-close without showing success message in batch mode
                     self.destroy()
                 else:
-                    self.status_label.config(text="Error obteniendo metadatos")
+                    self.status_label.configure(text="Error obteniendo metadatos")
                     messagebox.showerror("Error", "No se pudieron obtener los metadatos del issue")
 
             self.after(0, complete_selection)
@@ -3248,6 +3183,7 @@ class BatchSearchDialog(SearchDialog):
 
 def main():
     '''Main entry point for GUI'''
+    _configure_ctk_appearance()
     app = TebeoSferaGUI()
     app.mainloop()
 

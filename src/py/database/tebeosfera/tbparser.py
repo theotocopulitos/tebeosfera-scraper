@@ -587,6 +587,12 @@ class TebeoSferaParser(object):
         
         log.debug("Found {0} section headers".format(len(section_headers)))
         
+        # # Track processed result divs to avoid duplicates
+        # processed_divs = set()
+
+        # Track processed result divs to avoid duplicates
+        processed_keys = set()
+        
         # Process each section
         for i, header in enumerate(section_headers):
             section_title = self._clean_text(header.get_text()).strip()
@@ -622,13 +628,35 @@ class TebeoSferaParser(object):
                 if not next_result:
                     break
                 
-                # Check if we've hit the next section header
+                # # Skip if already processed (to avoid duplicates from duplicate section headers)
+                # result_id = id(next_result)
+                # if result_id in processed_divs:
+                
+                # Build a more stable key from content if href isn't directly accessible here
+                key = None
+                link = next_result.find('a', href=True)
+                if link and link.get('href'):
+                   key = link.get('href').strip()
+                else:
+                   # Fallback: normalized snippet of the result's text and classes
+                   classes = " ".join(sorted(next_result.get('class', [])))
+                   text_snippet = self._clean_text(next_result.get_text()).strip()[:200]
+                   key = f"{classes}|{text_snippet}"
+
+                if key in processed_keys:
+                   current_elem = next_result
+                   continue
+                
+
                 next_header = current_elem.find_next('div', class_=re.compile(r'help-block'))
                 if next_header and (not next_result or 
                     (next_header.sourceline and next_result.sourceline and 
                      next_header.sourceline < next_result.sourceline)):
                     # Next section header comes before next result, we're done with this section
                     break
+                
+                #Mark as processed
+                processed_keys.add(key)
                 
                 # Process this result
                 result = self._parse_result_line_bs(next_result, section_type)
