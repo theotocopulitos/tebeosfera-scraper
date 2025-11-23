@@ -174,6 +174,8 @@ class TebeoSferaDB(object):
         series_ref: SeriesRef object with type_s attribute indicating 'saga' or 'collection'
         Returns: Dictionary with 'collections' and 'issues' lists containing SeriesRef and IssueRef objects
         '''
+        # Default to 'collection' if type_s is not set (defensive programming)
+        # Collections are more common and the collection page fetch is the safer default
         series_type = getattr(series_ref, 'type_s', 'collection')
         series_key = series_ref.series_key
         
