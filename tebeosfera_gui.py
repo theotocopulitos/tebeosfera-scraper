@@ -57,7 +57,7 @@ DEFAULT_COLORS = {
 
 def set_toggle_button_colors(active_button, inactive_button):
     """Helper to set colors for toggle buttons (e.g., metadata view toggle)"""
-    active_button.configure(fg_color=None)  # Revert to default theme color
+    active_button.configure(fg_color=CTK_BUTTON_ACTIVE_COLOR)  # Use active theme color
     inactive_button.configure(fg_color=CTK_BUTTON_INACTIVE_COLOR)
 
 
@@ -139,15 +139,6 @@ except ImportError as e:
 def _configure_ctk_appearance():
     ctk.set_appearance_mode("light")  # "System", "Dark", "Light"
     ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
-
-def main():
-    '''Main entry point for GUI'''
-    _configure_ctk_appearance()
-    app = TebeoSferaGUI()
-    app.mainloop()
-
-if __name__ == '__main__':
-    main()
 
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
 SEARCH_PREVIEW_SIZE = (460, 690)
@@ -3192,6 +3183,7 @@ class BatchSearchDialog(SearchDialog):
 
 def main():
     '''Main entry point for GUI'''
+    _configure_ctk_appearance()
     app = TebeoSferaGUI()
     app.mainloop()
 
