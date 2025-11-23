@@ -2198,36 +2198,39 @@ class SearchDialog(ctk.CTkToplevel):
                         type_attr = getattr(r, 'type_s', 'unknown')
                         self._log(f"  [{i+1}] type_s='{type_attr}', name='{r.series_name_s[:50]}'")
                     
-                    # Insert sagas first
-                    if sagas:
-                        sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
-                        self.tree_item_data[sagas_parent] = ('header', None)
-                        for result in sagas:
-                            display_name = result.series_name_s
-                            item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
-                            # Add placeholder child to enable expansion
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
-                            self.tree_item_data[item_id] = ('saga', result)
-                    
-                    # Insert collections
-                    if collections:
-                        collections_parent = self.results_tree.insert('', 'end', text=f"📚 Colecciones ({len(collections)})", tags=('header',))
-                        self.tree_item_data[collections_parent] = ('header', None)
-                        for result in collections:
-                            display_name = result.series_name_s
-                            item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
-                            # Add placeholder child to enable expansion
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
-                            self.tree_item_data[item_id] = ('collection', result)
-                    
-                    # Insert issues
-                    if issues:
-                        issues_parent = self.results_tree.insert('', 'end', text=f"📖 Issues ({len(issues)})", tags=('header',))
-                        self.tree_item_data[issues_parent] = ('header', None)
-                        for result in issues:
-                            display_name = result.series_name_s
-                            item_id = self.results_tree.insert(issues_parent, 'end', text=display_name, tags=('issue',))
-                            self.tree_item_data[item_id] = ('issue', result)
+                    # Only insert results if NOT doing image comparison
+                    # (image comparison will insert them with scores)
+                    if not self.comic.cover_image:
+                        # Insert sagas first
+                        if sagas:
+                            sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
+                            self.tree_item_data[sagas_parent] = ('header', None)
+                            for result in sagas:
+                                display_name = result.series_name_s
+                                item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
+                                # Add placeholder child to enable expansion
+                                placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                self.tree_item_data[item_id] = ('saga', result)
+                        
+                        # Insert collections
+                        if collections:
+                            collections_parent = self.results_tree.insert('', 'end', text=f"📚 Colecciones ({len(collections)})", tags=('header',))
+                            self.tree_item_data[collections_parent] = ('header', None)
+                            for result in collections:
+                                display_name = result.series_name_s
+                                item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
+                                # Add placeholder child to enable expansion
+                                placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                self.tree_item_data[item_id] = ('collection', result)
+                        
+                        # Insert issues
+                        if issues:
+                            issues_parent = self.results_tree.insert('', 'end', text=f"📖 Issues ({len(issues)})", tags=('header',))
+                            self.tree_item_data[issues_parent] = ('header', None)
+                            for result in issues:
+                                display_name = result.series_name_s
+                                item_id = self.results_tree.insert(issues_parent, 'end', text=display_name, tags=('issue',))
+                                self.tree_item_data[item_id] = ('issue', result)
 
                     # Count by type
                     type_counts = {'issue': 0, 'collection': 0, 'saga': 0}
