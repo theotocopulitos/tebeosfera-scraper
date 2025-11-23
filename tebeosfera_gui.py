@@ -2209,7 +2209,7 @@ class SearchDialog(ctk.CTkToplevel):
                                 display_name = result.series_name_s
                                 item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
                                 # Add placeholder child to enable expansion
-                                placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                                 self.tree_item_data[item_id] = ('saga', result)
                         
                         # Insert collections
@@ -2220,7 +2220,7 @@ class SearchDialog(ctk.CTkToplevel):
                                 display_name = result.series_name_s
                                 item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
                                 # Add placeholder child to enable expansion
-                                placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                                 self.tree_item_data[item_id] = ('collection', result)
                         
                         # Insert issues
@@ -2329,7 +2329,7 @@ class SearchDialog(ctk.CTkToplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(sagas_parent, 'end', text=display_text, tags=('saga',))
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('saga', result)
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
@@ -2344,7 +2344,7 @@ class SearchDialog(ctk.CTkToplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(collections_parent, 'end', text=display_text, tags=('collection',))
-                            placeholder = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('collection', result)
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id

@@ -32,11 +32,13 @@ class TebeoSferaGUI(tk.Tk):
 
 **After:**
 ```python
+# Configure customtkinter at module level
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
+
 class TebeoSferaGUI(ctk.CTk):
     def __init__(self):
         ctk.CTk.__init__(self)
-        ctk.set_appearance_mode("light")
-        ctk.set_default_color_theme("blue")
         # Colors handled automatically!
 ```
 
