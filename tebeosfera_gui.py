@@ -2441,7 +2441,7 @@ class SearchDialog(ctk.CTkToplevel):
         # Collections and sagas expand on double-click (handled by tree expansion)
     
     def _on_tree_expand(self, event):
-        '''Handle tree item expansion - load issues for collections/sagas'''
+        '''Handle tree item expansion - load children (collections/issues) for sagas/collections'''
         item_id = self.results_tree.focus()
         if not item_id or item_id not in self.tree_item_data:
             return
@@ -2468,24 +2468,36 @@ class SearchDialog(ctk.CTkToplevel):
                 if child in self.tree_item_data:
                     del self.tree_item_data[child]
         
-        # Load issues in background
-        def load_issues():
-            issues = self.db.query_series_issues(item_obj)
+        # Load children in background
+        def load_children():
+            # Use query_series_children which returns both collections and issues
+            children = self.db.query_series_children(item_obj)
+            collections = children.get('collections', [])
+            issues = children.get('issues', [])
             
             def update_tree():
-                # Add issues as children
+                # Add collections first (for sagas)
+                for collection in collections:
+                    display_text = f"📚 {collection.series_name_s}"
+                    child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('collection',))
+                    # Add placeholder to enable expansion
+                    self.results_tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
+                    self.tree_item_data[child_id] = ('collection', collection)
+                
+                # Add issues
                 for issue in issues:
                     display_text = f"#{issue.issue_num_s} - {issue.title_s}"
                     child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
                     self.tree_item_data[child_id] = ('issue_item', issue)
                 
-                if not issues:
-                    no_issues_id = self.results_tree.insert(item_id, 'end', text="Sin issues", tags=('empty',))
-                    self.tree_item_data[no_issues_id] = ('empty', None)
+                # If no children found, show message
+                if not collections and not issues:
+                    no_children_id = self.results_tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
+                    self.tree_item_data[no_children_id] = ('empty', None)
             
             self.after(0, update_tree)
         
-        thread = threading.Thread(target=load_issues)
+        thread = threading.Thread(target=load_children)
         thread.daemon = True
         thread.start()
 

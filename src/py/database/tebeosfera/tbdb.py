@@ -164,38 +164,70 @@ class TebeoSferaDB(object):
         # and extract additional details
         return series_ref
 
-    def query_series_issues(self, series_ref):
+    def query_series_children(self, series_ref):
         '''
-        Get all issues for a given series.
-
-        series_ref: SeriesRef object
-        Returns: List of IssueRef objects
+        Get all children for a given series/saga (collections, issues, or both).
+        
+        For sagas: returns both collections and issues
+        For collections: returns issues only
+        
+        series_ref: SeriesRef object with type_s attribute indicating 'saga' or 'collection'
+        Returns: Dictionary with 'collections' and 'issues' lists containing SeriesRef and IssueRef objects
         '''
-        log.debug("Querying issues for series: ", series_ref.series_key)
-
-        # Fetch the collection page
-        html_content = self.connection.get_collection_page(series_ref.series_key)
+        series_type = getattr(series_ref, 'type_s', 'collection')
+        series_key = series_ref.series_key
+        
+        log.debug("Querying children for {0}: {1}".format(series_type, series_key))
+        
+        # Fetch the appropriate page based on type
+        if series_type == 'saga':
+            html_content = self.connection.get_saga_page(series_key)
+        else:
+            html_content = self.connection.get_collection_page(series_key)
+            
         if not html_content:
-            log.debug("Could not fetch collection page")
-            return []
-
-        # Parse search results from collection page
+            log.debug("Could not fetch {0} page".format(series_type))
+            return {'collections': [], 'issues': []}
+        
+        # Parse search results from the page
         results = self.parser.parse_search_results(html_content)
-
+        
+        collections = []
         issue_refs = []
-
-        # Convert issue results to IssueRef objects
+        
+        # Process results based on type
         for result in results:
-            if result['type'] == 'issue':
-                # Extract issue number from slug if possible
-                slug = result['slug']
-                issue_num = self._extract_issue_number(slug)
-
-                # Get thumbnail URL and ensure it's absolute
+            result_type = result.get('type', 'unknown')
+            slug = result.get('slug')
+            
+            if result_type == 'collection':
+                # Collections found in saga pages
                 thumb_url = result.get('thumb_url')
                 if thumb_url and not thumb_url.startswith('http'):
                     thumb_url = 'https://www.tebeosfera.com' + thumb_url
-
+                    
+                series_name = result.get('series_name') or result.get('title', slug)
+                
+                collection_ref = SeriesRef(
+                    series_key=slug,
+                    series_name_s=series_name,
+                    volume_year_n=-1,
+                    publisher_s='',
+                    issue_count_n=0,
+                    thumb_url_s=thumb_url
+                )
+                collection_ref.type_s = 'collection'
+                collection_ref.extra_image_url = result.get('image_url')
+                collections.append(collection_ref)
+                
+            elif result_type == 'issue':
+                # Issues found in both saga and collection pages
+                issue_num = self._extract_issue_number(slug)
+                
+                thumb_url = result.get('thumb_url')
+                if thumb_url and not thumb_url.startswith('http'):
+                    thumb_url = 'https://www.tebeosfera.com' + thumb_url
+                
                 issue_ref = IssueRef(
                     issue_num_s=issue_num,
                     issue_key=slug,
@@ -204,9 +236,24 @@ class TebeoSferaDB(object):
                 )
                 issue_ref.extra_image_url = result.get('image_url')
                 issue_refs.append(issue_ref)
+        
+        log.debug("Found {0} collections and {1} issues in {2}".format(
+            len(collections), len(issue_refs), series_type))
+        
+        return {'collections': collections, 'issues': issue_refs}
 
-        log.debug("Found {0} issues in series".format(len(issue_refs)))
-        return issue_refs
+    def query_series_issues(self, series_ref):
+        '''
+        Get all issues for a given series.
+
+        series_ref: SeriesRef object
+        Returns: List of IssueRef objects
+        
+        Note: This method now uses query_series_children internally and returns only issues
+        for backward compatibility. For tree expansion, use query_series_children instead.
+        '''
+        children = self.query_series_children(series_ref)
+        return children['issues']
 
     def query_issue_details(self, issue_ref):
         '''

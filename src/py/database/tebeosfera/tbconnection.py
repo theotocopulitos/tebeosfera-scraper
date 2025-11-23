@@ -318,6 +318,16 @@ class TebeoSferaConnection(object):
         collection_url = "/colecciones/{0}.html".format(collection_slug)
         return self.get_page(collection_url)
 
+    def get_saga_page(self, saga_slug):
+        '''
+        Get the detail page for a saga.
+
+        saga_slug: The slug identifier for the saga
+        Returns: HTML content of saga page, or None on error
+        '''
+        saga_url = "/sagas/{0}.html".format(saga_slug)
+        return self.get_page(saga_url)
+
     def get_author_page(self, author_slug):
         '''
         Get the detail page for an author.
