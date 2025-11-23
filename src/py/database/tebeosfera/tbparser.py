@@ -682,6 +682,46 @@ class TebeoSferaParser(object):
                 if result:
                     results.append(result)
         
+        # Additional fallback: if still no results, try finding all /numeros/ links directly
+        # This handles cases where the HTML structure is different
+        if not results:
+            log.debug("Still no results, trying direct /numeros/ link scan")
+            
+            # Find all links to /numeros/ pages
+            numeros_links = soup.find_all('a', href=re.compile(r'/numeros/[^/]+\.html'))
+            log.debug("Found {0} /numeros/ links via direct scan".format(len(numeros_links)))
+            
+            for link in numeros_links:
+                href = link.get('href', '')
+                match = re.search(r'/numeros/([^/]+)\.html', href)
+                if match:
+                    slug = match.group(1)
+                    title = self._clean_text(link.get_text())
+                    if not title:
+                        # Try to get title from parent or nearby elements
+                        parent = link.parent
+                        if parent:
+                            title = self._clean_text(parent.get_text())
+                    
+                    # Get thumbnail if available
+                    thumb_url = None
+                    img = link.find('img') or (link.parent and link.parent.find('img'))
+                    if img:
+                        thumb_url = img.get('src', '')
+                        if thumb_url and not thumb_url.startswith('http'):
+                            thumb_url = 'https://www.tebeosfera.com' + thumb_url
+                    
+                    if slug and title:
+                        result = {
+                            'slug': slug,
+                            'title': title,
+                            'url': href if href.startswith('http') else 'https://www.tebeosfera.com' + href,
+                            'thumb_url': thumb_url,
+                            'type': 'issue'
+                        }
+                        results.append(result)
+                        log.debug("  Added issue from direct link: {0}".format(title[:50]))
+        
         log.debug("Parser returning {0} total results".format(len(results)))
         return results
 

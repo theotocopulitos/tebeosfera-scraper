@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.error
 import re
 import gzip
+import os
 from utils_compat import sstr
 
 
@@ -311,12 +312,238 @@ class TebeoSferaConnection(object):
     def get_collection_page(self, collection_slug):
         '''
         Get the detail page for a collection/series.
+        This includes fetching the numbers via AJAX, similar to search results.
 
         collection_slug: The slug identifier for the collection
-        Returns: HTML content of collection page, or None on error
+        Returns: HTML content of collection page with numbers loaded, or None on error
         '''
         collection_url = "/colecciones/{0}.html".format(collection_slug)
-        return self.get_page(collection_url)
+        initial_html = self.get_page(collection_url)
+        
+        if not initial_html:
+            return None
+        
+        # Collection pages load numbers via AJAX
+        # First, try to find the collection ID or AJAX endpoint in the HTML
+        import re
+        from utils_compat import log, sstr
+        
+        print(f"[DEBUG] get_collection_page called for: {collection_slug}")
+        print(f"[DEBUG] Initial HTML size: {len(initial_html) if initial_html else 0} bytes")
+        
+        # First, check if numbers are already in the HTML
+        if initial_html:
+            numeros_count = initial_html.count('/numeros/')
+            linea_resultados_count = initial_html.count('linea_resultados')
+            print(f"[DEBUG] HTML contains: {numeros_count} /numeros/ links, {linea_resultados_count} linea_resultados divs")
+            
+            # If we already have numbers in the HTML, return it as-is
+            if numeros_count > 0 or linea_resultados_count > 0:
+                print(f"[DEBUG] HTML already contains numbers, returning as-is")
+                return initial_html
+        
+        # Save HTML for debugging if no numbers found
+        try:
+            import tempfile
+            debug_file = os.path.join(tempfile.gettempdir(), f'tebeosfera_collection_{collection_slug}.html')
+            with open(debug_file, 'w', encoding='utf-8') as f:
+                f.write(initial_html)
+            print(f"[DEBUG] Saved collection page HTML to: {debug_file} (no numbers found in HTML)")
+        except Exception as e:
+            print(f"[DEBUG] Could not save debug file: {e}")
+        
+        # Try to find collection ID in the HTML (might be in data attributes, scripts, etc.)
+        collection_id = None
+        collection_id_match = re.search(r'coleccion[_-]?id["\']?\s*[:=]\s*["\']?(\d+)', initial_html, re.IGNORECASE)
+        if collection_id_match:
+            collection_id = collection_id_match.group(1)
+            print(f"[DEBUG] Found collection ID in HTML: {collection_id}")
+        
+        # Also try to find AJAX endpoint or script that loads numbers
+        # Look for patterns like: ajax.loadNumbers(collection_id) or similar
+        ajax_patterns = [
+            r'ajax[^"\']*["\']([^"\']*numeros[^"\']*)["\']',
+            r'loadNumbers[^\(]*\([^\)]*["\']?(\d+)["\']?',
+            r'/neko/[^"\']*numeros[^"\']*',
+        ]
+        
+        # Try to extract collection name from page title for fallback
+        title_match = re.search(r'<title>([^<]+)</title>', initial_html, re.IGNORECASE)
+        collection_name = collection_slug.replace('_', ' ') if not title_match else title_match.group(1).strip()
+        # Clean title (remove " - TebeoSfera" or similar)
+        collection_name = re.sub(r'\s*[-–]\s*TebeoSfera.*$', '', collection_name, flags=re.IGNORECASE).strip()
+        print(f"[DEBUG] Collection name from title: '{collection_name}'")
+        
+        # Method 1: Try to use collection ID if found
+        if collection_id:
+            try:
+                import urllib.parse
+                import gzip
+                
+                # Try different endpoints for collection-specific numbers
+                endpoints_to_try = [
+                    {
+                        'url': '/neko/php/ajax/megaAjax.php',
+                        'data': {'action': 'numeros_coleccion', 'coleccion_id': collection_id}
+                    },
+                    {
+                        'url': '/neko/templates/ajax/buscador_txt_post.php',
+                        'data': {'tabla': 'T3_numeros', 'coleccion_id': collection_id}
+                    },
+                    {
+                        'url': '/neko/php/ajax/megaAjax.php',
+                        'data': {'coleccion_id': collection_id, 'ajax': '1'}
+                    }
+                ]
+                
+                for endpoint in endpoints_to_try:
+                    try:
+                        numbers_data = urllib.parse.urlencode(endpoint['data']).encode('utf-8')
+                        numbers_url = TebeoSferaConnection.BASE_URL + endpoint['url']
+                        print(f"[DEBUG] Trying endpoint: {endpoint['url']} with {endpoint['data']}")
+                        
+                        request = urllib.request.Request(numbers_url, data=numbers_data, method='POST')
+                        request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+                        request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+                        request.add_header('Referer', TebeoSferaConnection.BASE_URL + collection_url)
+                        
+                        self._enforce_rate_limit()
+                        response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+                        numbers_html = response.read()
+                        
+                        if numbers_html.startswith(b'\x1f\x8b'):
+                            numbers_html = gzip.decompress(numbers_html)
+                        
+                        charset = self._get_charset(response)
+                        if charset:
+                            numbers_html = numbers_html.decode(charset)
+                        else:
+                            try:
+                                numbers_html = numbers_html.decode('utf-8')
+                            except:
+                                numbers_html = numbers_html.decode('latin-1')
+                        
+                        print(f"[DEBUG] Response: {len(numbers_html)} bytes, preview: {numbers_html[:200]}")
+                        
+                        # Check if this looks like actual results (not a search form)
+                        is_search_form = 'Nombre real' in numbers_html or 'Carácteres disponibles' in numbers_html
+                        if numbers_html and not is_search_form and ('linea_resultados' in numbers_html or '/numeros/' in numbers_html):
+                            numbers_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Números</div>\n' + numbers_html
+                            print(f"[DEBUG] Collection ID method succeeded with endpoint {endpoint['url']}!")
+                            return initial_html + '\n' + numbers_with_header
+                    except Exception as e:
+                        print(f"[DEBUG] Endpoint {endpoint['url']} failed: {sstr(e)}")
+                        continue
+            except Exception as e:
+                print(f"[DEBUG] Collection ID method failed: {sstr(e)}")
+        
+        # Method 2: Try searching for numbers with collection slug in URL pattern
+        try:
+            import urllib.parse
+            import gzip
+            
+            # Try using the collection slug directly in a different endpoint
+            # Some sites use the slug in the AJAX call
+            numbers_data = urllib.parse.urlencode({
+                'action': 'numeros_coleccion',
+                'coleccion': collection_slug
+            }).encode('utf-8')
+            
+            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
+            print(f"[DEBUG] Trying slug method: {numbers_url} with coleccion={collection_slug}")
+            
+            request = urllib.request.Request(numbers_url, data=numbers_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + collection_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            numbers_html = response.read()
+            
+            if numbers_html.startswith(b'\x1f\x8b'):
+                numbers_html = gzip.decompress(numbers_html)
+            
+            charset = self._get_charset(response)
+            if charset:
+                numbers_html = numbers_html.decode(charset)
+            else:
+                try:
+                    numbers_html = numbers_html.decode('utf-8')
+                except:
+                    numbers_html = numbers_html.decode('latin-1')
+            
+            print(f"[DEBUG] Slug method response: {len(numbers_html)} bytes")
+            print(f"[DEBUG] Preview: {numbers_html[:300]}")
+            
+            if numbers_html and ('linea_resultados' in numbers_html or '/numeros/' in numbers_html):
+                numbers_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Números</div>\n' + numbers_html
+                print(f"[DEBUG] Slug method succeeded!")
+                return initial_html + '\n' + numbers_with_header
+        except Exception as e:
+            print(f"[DEBUG] Slug method failed: {sstr(e)}")
+        
+        # Method 3: Fallback - search by collection name (may return too many results)
+        # But filter to only those that match the collection slug pattern
+        try:
+            import urllib.parse
+            import gzip
+            
+            numbers_data = urllib.parse.urlencode({
+                'action': 'buscador_simple_numeros',
+                'busqueda': collection_name
+            }).encode('utf-8')
+            
+            numbers_url = TebeoSferaConnection.BASE_URL + "/neko/php/ajax/megaAjax.php"
+            print(f"[DEBUG] Fallback: searching by name '{collection_name}'")
+            
+            request = urllib.request.Request(numbers_url, data=numbers_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            request.add_header('User-Agent', TebeoSferaConnection.USER_AGENT)
+            request.add_header('Referer', TebeoSferaConnection.BASE_URL + collection_url)
+            
+            self._enforce_rate_limit()
+            response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
+            numbers_html = response.read()
+            
+            if numbers_html.startswith(b'\x1f\x8b'):
+                numbers_html = gzip.decompress(numbers_html)
+            
+            charset = self._get_charset(response)
+            if charset:
+                numbers_html = numbers_html.decode(charset)
+            else:
+                try:
+                    numbers_html = numbers_html.decode('utf-8')
+                except:
+                    numbers_html = numbers_html.decode('latin-1')
+            
+            print(f"[DEBUG] Fallback response: {len(numbers_html)} bytes")
+            print(f"[DEBUG] Preview: {numbers_html[:300]}")
+            
+            # Check if response contains actual results (not a search form)
+            # A search form would have "Nombre real" or "Carácteres disponibles"
+            is_search_form = 'Nombre real' in numbers_html or 'Carácteres disponibles' in numbers_html
+            
+            if numbers_html and not is_search_form and ('/numeros/' in numbers_html or 'linea_resultados' in numbers_html):
+                # This looks like actual results
+                numbers_with_header = '<div class="help-block" style="clear:both; margin-top: -2px; font-size: 16px; color: #FD8F01; font-weight: bold; margin-bottom: 0px;">Números</div>\n' + numbers_html
+                print(f"[DEBUG] Fallback method succeeded with {len(numbers_html)} bytes")
+                return initial_html + '\n' + numbers_with_header
+            elif is_search_form:
+                print(f"[DEBUG] Fallback returned search form, not numbers. Trying to extract from HTML directly...")
+                # The AJAX returned a search form, which means we need a different approach
+                # Maybe the numbers are in the initial HTML, or we need a different endpoint
+        except Exception as e:
+            print(f"[DEBUG] Fallback method failed: {sstr(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        print(f"[DEBUG] All methods failed, returning initial HTML only")
+        log.debug("Collection page: could not fetch numbers via AJAX")
+        
+        # Fallback: return initial page (may not have numbers loaded)
+        return initial_html
 
     def get_saga_page(self, saga_slug):
         '''

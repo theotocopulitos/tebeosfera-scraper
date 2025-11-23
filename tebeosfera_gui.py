@@ -1778,6 +1778,22 @@ class SearchDialog(ctk.CTkToplevel):
         self.results_tree.bind('<Double-Button-1>', self._on_tree_double_click)
         # Bind expansion event to load issues
         self.results_tree.bind('<<TreeviewOpen>>', self._on_tree_expand)
+        print("[DEBUG GUI] Tree expansion event bound to _on_tree_expand")
+        
+        # Also try binding to Button-1 on the expand/collapse icon area
+        # This is a workaround if <<TreeviewOpen>> doesn't fire
+        def on_tree_click(event):
+            region = self.results_tree.identify_region(event.x, event.y)
+            if region == 'tree':
+                item_id = self.results_tree.identify_row(event.y)
+                if item_id:
+                    children = self.results_tree.get_children(item_id)
+                    if children:
+                        # Check if it's being expanded (has children but they might be hidden)
+                        # Try to trigger expansion manually
+                        print(f"[DEBUG GUI] Click on tree item {item_id}, has {len(children)} children")
+        self.results_tree.bind('<Button-1>', on_tree_click)
+        print("[DEBUG GUI] Tree expansion event bound to _on_tree_expand")
 
         scrollbar.config(command=self.results_tree.yview)
         
@@ -2229,8 +2245,9 @@ class SearchDialog(ctk.CTkToplevel):
                                 display_name = result.series_name_s
                                 item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
                                 # Add placeholder child to enable expansion
-                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                                 self.tree_item_data[item_id] = ('saga', result)
+                                self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                         
                         # Insert collections
                         if collections:
@@ -2240,8 +2257,9 @@ class SearchDialog(ctk.CTkToplevel):
                                 display_name = result.series_name_s
                                 item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
                                 # Add placeholder child to enable expansion
-                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                                 self.tree_item_data[item_id] = ('collection', result)
+                                self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                         
                         # Insert issues
                         if issues:
@@ -2349,8 +2367,9 @@ class SearchDialog(ctk.CTkToplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(sagas_parent, 'end', text=display_text, tags=('saga',))
-                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('saga', result)
+                            self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
                                 best_score = score
@@ -2364,8 +2383,9 @@ class SearchDialog(ctk.CTkToplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(collections_parent, 'end', text=display_text, tags=('collection',))
-                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('collection', result)
+                            self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
                                 best_score = score
@@ -2462,28 +2482,92 @@ class SearchDialog(ctk.CTkToplevel):
     
     def _on_tree_expand(self, event):
         '''Handle tree item expansion - load children (collections/issues) for sagas/collections'''
-        item_id = self.results_tree.focus()
-        if not item_id or item_id not in self.tree_item_data:
+        print(f"[DEBUG GUI] ===== _on_tree_expand CALLED =====")
+        print(f"[DEBUG GUI] Event type: {type(event)}")
+        print(f"[DEBUG GUI] Event: {event}")
+        
+        # Get the item that was expanded
+        # In Treeview, the event doesn't directly give us the item_id
+        # We need to get it from the tree's selection or focus
+        try:
+            # Try to get from event if available
+            if hasattr(event, 'item'):
+                item_id = event.item
+                print(f"[DEBUG GUI] Got item_id from event.item: {item_id}")
+            else:
+                # Get from tree selection or focus
+                selected = self.results_tree.selection()
+                if selected:
+                    item_id = selected[0]
+                    print(f"[DEBUG GUI] Got item_id from selection: {item_id}")
+                else:
+                    item_id = self.results_tree.focus()
+                    print(f"[DEBUG GUI] Got item_id from focus: {item_id}")
+        except Exception as e:
+            print(f"[DEBUG GUI] Error getting item_id: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: try to get from selection
+            item_id = self.results_tree.focus()
+            print(f"[DEBUG GUI] Fallback: item_id from tree.focus(): {item_id}")
+        
+        if not item_id:
+            print(f"[DEBUG GUI] No item_id found, returning")
+            return
+            
+        print(f"[DEBUG GUI] item_id: {item_id}, in tree_item_data: {item_id in self.tree_item_data}")
+        print(f"[DEBUG GUI] tree_item_data keys: {list(self.tree_item_data.keys())[:10]}...")
+        
+        if item_id not in self.tree_item_data:
+            print(f"[DEBUG GUI] item_id not in tree_item_data, returning")
             return
         
         item_type, item_obj = self.tree_item_data[item_id]
+        print(f"[DEBUG GUI] item_type: {item_type}, item_obj: {type(item_obj)}")
         
         # Ignore headers
         if item_type == 'header':
+            print(f"[DEBUG GUI] Ignoring header item")
             return
         
         # Only handle collections and sagas
         if item_type not in ('collection', 'saga'):
+            print(f"[DEBUG GUI] Ignoring item_type '{item_type}' (not collection or saga)")
             return
+        
+        print(f"[DEBUG GUI] Processing expansion for {item_type}")
         
         # Check if already loaded (has real children, not just placeholder)
         children = self.results_tree.get_children(item_id)
-        if children and self.tree_item_data.get(children[0], (None, None))[0] != 'loading':
-            return  # Already loaded
+        print(f"[DEBUG GUI] Current children count: {len(children)}")
+        
+        # Check if children exist and if they are placeholders
+        has_loading_placeholder = False
+        if children:
+            # Check if any child is the "Cargando..." placeholder
+            # We can check by text content or by checking tree_item_data
+            for child in children:
+                child_text = self.results_tree.item(child, 'text')
+                child_type = self.tree_item_data.get(child, (None, None))[0]
+                print(f"[DEBUG GUI] Child {child}: text='{child_text}', type={child_type}")
+                if child_text == "Cargando..." or child_type == 'loading':
+                    has_loading_placeholder = True
+                    print(f"[DEBUG GUI] Found loading placeholder: {child}")
+                    break
+            
+            # If we have children but none are loading placeholders, it's already loaded
+            if not has_loading_placeholder and len(children) > 0:
+                print(f"[DEBUG GUI] Already loaded (has {len(children)} real children), returning")
+                return  # Already loaded
         
         # Remove placeholder
+        print(f"[DEBUG GUI] Removing placeholder children...")
         for child in children:
-            if self.tree_item_data.get(child, (None, None))[0] == 'loading':
+            child_text = self.results_tree.item(child, 'text')
+            child_type = self.tree_item_data.get(child, (None, None))[0]
+            print(f"[DEBUG GUI] Checking child {child}: text='{child_text}', type={child_type}")
+            if child_text == "Cargando..." or child_type == 'loading':
+                print(f"[DEBUG GUI] Deleting loading placeholder: {child}")
                 self.results_tree.delete(child)
                 if child in self.tree_item_data:
                     del self.tree_item_data[child]
@@ -2491,10 +2575,32 @@ class SearchDialog(ctk.CTkToplevel):
         # Load children in background
         def load_children():
             try:
+                print(f"[DEBUG GUI] load_children called for item_id: {item_id}")
+                print(f"[DEBUG GUI] item_type: {item_type}, item_obj type: {type(item_obj)}")
+                
+                # Validate item_obj has required attributes
+                if not hasattr(item_obj, 'series_key'):
+                    error_msg = f"item_obj missing series_key attribute. Type: {type(item_obj)}"
+                    print(f"[DEBUG GUI] ERROR: {error_msg}")
+                    raise ValueError(error_msg)
+                
+                series_key = getattr(item_obj, 'series_key', None)
+                series_type = getattr(item_obj, 'type_s', 'collection')
+                series_name = getattr(item_obj, 'series_name_s', 'Unknown')
+                
+                print(f"[DEBUG GUI] Series key: {series_key}, type: {series_type}, name: {series_name}")
+                self._log(f"🔍 Cargando hijos de {series_type}: {series_name} (key: {series_key})")
+                
                 # Use query_series_children which returns both collections and issues
+                print(f"[DEBUG GUI] Calling db.query_series_children...")
                 children = self.db.query_series_children(item_obj)
+                print(f"[DEBUG GUI] query_series_children returned: {type(children)}")
+                
                 collections = children.get('collections', [])
                 issues = children.get('issues', [])
+                
+                print(f"[DEBUG GUI] Found {len(collections)} collections and {len(issues)} issues")
+                self._log(f"✅ Encontrados {len(collections)} colecciones y {len(issues)} issues")
                 
                 def update_tree():
                     # Add collections first (for sagas)
@@ -2502,8 +2608,9 @@ class SearchDialog(ctk.CTkToplevel):
                         display_text = f"📚 {collection.series_name_s}"
                         child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('collection',))
                         # Add placeholder to enable expansion
-                        self.results_tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
+                        placeholder_id = self.results_tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
                         self.tree_item_data[child_id] = ('collection', collection)
+                        self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                     
                     # Add issues
                     for issue in issues:
@@ -2521,6 +2628,7 @@ class SearchDialog(ctk.CTkToplevel):
                 # Log error and show in tree
                 import traceback
                 error_msg = str(e)
+                self._log(f"❌ Error cargando hijos: {error_msg}")
                 print(f"Error loading children: {error_msg}")
                 traceback.print_exc()
                 
