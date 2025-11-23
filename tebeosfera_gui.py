@@ -127,7 +127,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
 # Tkinter imports (Python 3)
 try:
     import tkinter as tk
-    from tkinter import filedialog, messagebox
+    from tkinter import filedialog, messagebox, ttk
     import customtkinter as ctk
     from PIL import Image, ImageTk
 except ImportError as e:
