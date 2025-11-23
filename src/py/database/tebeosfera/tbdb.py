@@ -177,20 +177,28 @@ class TebeoSferaDB(object):
         series_type = getattr(series_ref, 'type_s', 'collection')
         series_key = series_ref.series_key
         
-        log.debug("Querying children for {0}: {1}".format(series_type, series_key))
+        log.debug("=== query_series_children called ===")
+        log.debug("Series type: {0}".format(series_type))
+        log.debug("Series key: {0}".format(series_key))
         
         # Fetch the appropriate page based on type
         if series_type == 'saga':
+            log.debug("Fetching saga page for: {0}".format(series_key))
             html_content = self.connection.get_saga_page(series_key)
         else:
+            log.debug("Fetching collection page for: {0}".format(series_key))
             html_content = self.connection.get_collection_page(series_key)
             
         if not html_content:
-            log.debug("Could not fetch {0} page".format(series_type))
+            log.debug("ERROR: Could not fetch {0} page for {1}".format(series_type, series_key))
             return {'collections': [], 'issues': []}
+        
+        log.debug("Fetched HTML content: {0} bytes".format(len(html_content)))
         
         # Parse search results from the page
         results = self.parser.parse_search_results(html_content)
+        
+        log.debug("Parser returned {0} results".format(len(results)))
         
         collections = []
         issue_refs = []
@@ -199,6 +207,8 @@ class TebeoSferaDB(object):
         for result in results:
             result_type = result.get('type', 'unknown')
             slug = result.get('slug')
+            
+            log.debug("  Processing result: type={0}, slug={1}".format(result_type, slug))
             
             if result_type == 'collection':
                 # Collections found in saga pages
@@ -219,6 +229,7 @@ class TebeoSferaDB(object):
                 collection_ref.type_s = 'collection'
                 collection_ref.extra_image_url = result.get('image_url')
                 collections.append(collection_ref)
+                log.debug("    Added collection: {0}".format(series_name))
                 
             elif result_type == 'issue':
                 # Issues found in both saga and collection pages
@@ -236,9 +247,11 @@ class TebeoSferaDB(object):
                 )
                 issue_ref.extra_image_url = result.get('image_url')
                 issue_refs.append(issue_ref)
+                log.debug("    Added issue: {0}".format(result['title'][:50]))
         
         log.debug("Found {0} collections and {1} issues in {2}".format(
             len(collections), len(issue_refs), series_type))
+        log.debug("=== query_series_children complete ===")
         
         return {'collections': collections, 'issues': issue_refs}
 

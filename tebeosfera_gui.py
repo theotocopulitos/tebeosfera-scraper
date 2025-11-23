@@ -2470,32 +2470,45 @@ class SearchDialog(ctk.CTkToplevel):
         
         # Load children in background
         def load_children():
-            # Use query_series_children which returns both collections and issues
-            children = self.db.query_series_children(item_obj)
-            collections = children.get('collections', [])
-            issues = children.get('issues', [])
-            
-            def update_tree():
-                # Add collections first (for sagas)
-                for collection in collections:
-                    display_text = f"📚 {collection.series_name_s}"
-                    child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('collection',))
-                    # Add placeholder to enable expansion
-                    self.results_tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
-                    self.tree_item_data[child_id] = ('collection', collection)
+            try:
+                # Use query_series_children which returns both collections and issues
+                children = self.db.query_series_children(item_obj)
+                collections = children.get('collections', [])
+                issues = children.get('issues', [])
                 
-                # Add issues
-                for issue in issues:
-                    display_text = f"#{issue.issue_num_s} - {issue.title_s}"
-                    child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
-                    self.tree_item_data[child_id] = ('issue_item', issue)
+                def update_tree():
+                    # Add collections first (for sagas)
+                    for collection in collections:
+                        display_text = f"📚 {collection.series_name_s}"
+                        child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('collection',))
+                        # Add placeholder to enable expansion
+                        self.results_tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
+                        self.tree_item_data[child_id] = ('collection', collection)
+                    
+                    # Add issues
+                    for issue in issues:
+                        display_text = f"#{issue.issue_num_s} - {issue.title_s}"
+                        child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
+                        self.tree_item_data[child_id] = ('issue_item', issue)
+                    
+                    # If no children found, show message
+                    if not collections and not issues:
+                        no_children_id = self.results_tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
+                        self.tree_item_data[no_children_id] = ('empty', None)
                 
-                # If no children found, show message
-                if not collections and not issues:
-                    no_children_id = self.results_tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
-                    self.tree_item_data[no_children_id] = ('empty', None)
-            
-            self.after(0, update_tree)
+                self.after(0, update_tree)
+            except Exception as e:
+                # Log error and show in tree
+                import traceback
+                error_msg = str(e)
+                print(f"Error loading children: {error_msg}")
+                traceback.print_exc()
+                
+                def show_error():
+                    error_id = self.results_tree.insert(item_id, 'end', text=f"Error: {error_msg[:50]}", tags=('empty',))
+                    self.tree_item_data[error_id] = ('empty', None)
+                
+                self.after(0, show_error)
         
         thread = threading.Thread(target=load_children)
         thread.daemon = True
