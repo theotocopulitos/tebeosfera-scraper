@@ -2105,8 +2105,8 @@ class SearchDialog(ctk.CTkToplevel):
         tk.Button(button_frame, text="Buscar", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Cancelar", command=on_cancel, width=12).pack(side=tk.LEFT, padx=5)
         
-        # Bind Enter key
-        entry.bind('<Return>', lambda e: on_ok())
+        # Bind Enter key - return 'break' to stop event propagation
+        entry.bind('<Return>', lambda e: on_ok() or 'break')
         edit_dialog.bind('<Escape>', lambda e: on_cancel())
 
     def _search(self):
