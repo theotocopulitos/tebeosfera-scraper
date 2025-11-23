@@ -2508,7 +2508,7 @@ class SearchDialog(ctk.CTkToplevel):
         info += "\nExpande el nodo para ver los issues."
         self.metadata_display.insert('1.0', info)
         self.metadata_display.config(state=tk.DISABLED)
-        self.apply_xml_button.config(state=tk.DISABLED)
+        self.apply_xml_button.configure(state=tk.DISABLED)
 
         # Load cover in background
         def load_cover():
@@ -2606,7 +2606,7 @@ class SearchDialog(ctk.CTkToplevel):
         )
         self.metadata_display.delete('1.0', tk.END)
         self.metadata_display.insert('1.0', 'Cargando metadatos...')
-        self.apply_xml_button.config(state=tk.DISABLED)
+        self.apply_xml_button.configure(state=tk.DISABLED)
         self.update()
         
         # Load cover and metadata in background
@@ -2677,7 +2677,7 @@ class SearchDialog(ctk.CTkToplevel):
                     self._toggle_metadata_view()
                     
                     # Enable apply button
-                    self.apply_xml_button.config(state=tk.NORMAL)
+                    self.apply_xml_button.configure(state=tk.NORMAL)
                 else:
                     self.metadata_display.delete('1.0', tk.END)
                     self.metadata_display.insert('1.0', 'Error: No se pudieron obtener los metadatos')
