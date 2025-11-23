@@ -587,6 +587,9 @@ class TebeoSferaParser(object):
         
         log.debug("Found {0} section headers".format(len(section_headers)))
         
+        # Track processed result divs to avoid duplicates
+        processed_divs = set()
+        
         # Process each section
         for i, header in enumerate(section_headers):
             section_title = self._clean_text(header.get_text()).strip()
@@ -622,6 +625,12 @@ class TebeoSferaParser(object):
                 if not next_result:
                     break
                 
+                # Skip if already processed (to avoid duplicates from duplicate section headers)
+                result_id = id(next_result)
+                if result_id in processed_divs:
+                    current_elem = next_result
+                    continue
+                
                 # Check if we've hit the next section header
                 next_header = current_elem.find_next('div', class_=re.compile(r'help-block'))
                 if next_header and (not next_result or 
@@ -629,6 +638,9 @@ class TebeoSferaParser(object):
                      next_header.sourceline < next_result.sourceline)):
                     # Next section header comes before next result, we're done with this section
                     break
+                
+                # Mark as processed
+                processed_divs.add(result_id)
                 
                 # Process this result
                 result = self._parse_result_line_bs(next_result, section_type)
