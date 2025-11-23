@@ -821,7 +821,7 @@ class TebeoSferaGUI(ctk.CTk):
         button_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
         # Ensure buttons don't shrink below their natural size
         button_frame.pack_propagate(False)
-        button_frame.config(height=50)
+        button_frame.configure(height=50)
 
         # Create styled action buttons with minimum width
         btn_search = ctk.CTkButton(button_frame, text="🔍 Buscar en TebeoSfera", 
@@ -1245,23 +1245,23 @@ class TebeoSferaGUI(ctk.CTk):
         # Always show the buttons frame and update info
         if hasattr(self, 'page_info_label'):
             if total > 0:
-                self.page_info_label.config(text=f"{current + 1}/{total}")
+                self.page_info_label.configure(text=f"{current + 1}/{total}")
             else:
-                self.page_info_label.config(text="0/0")
+                self.page_info_label.configure(text="0/0")
         
         # Enable/disable buttons based on page count and position
         if total > 1:
             # Enable prev if not on first page
-            self.prev_page_button.config(
+            self.prev_page_button.configure(
                 state=tk.NORMAL if current > 0 else tk.DISABLED)
             # Enable next if not on last page
-            self.next_page_button.config(
+            self.next_page_button.configure(
                 state=tk.NORMAL if current < total - 1 else tk.DISABLED)
             self._log(f"📖 Navegación habilitada: página {current + 1} de {total}")
         else:
             # Disable both if only 1 or 0 pages
-            self.prev_page_button.config(state=tk.DISABLED)
-            self.next_page_button.config(state=tk.DISABLED)
+            self.prev_page_button.configure(state=tk.DISABLED)
+            self.next_page_button.configure(state=tk.DISABLED)
             if total == 1:
                 self._log(f"ℹ️ Cómic con una sola página - navegación deshabilitada")
 
@@ -1529,7 +1529,7 @@ class TebeoSferaGUI(ctk.CTk):
 
     def _update_status(self, message):
         '''Update status bar message'''
-        self.status_bar.config(text=message)
+        self.status_bar.configure(text=message)
 
     def _process_queue(self):
         '''Process updates from background threads'''
@@ -1947,20 +1947,20 @@ class SearchDialog(ctk.CTkToplevel):
         '''Enable/disable open buttons based on current selections'''
         if hasattr(self, 'open_series_button'):
             if self.selected_series:
-                self.open_series_button.config(state=tk.NORMAL)
+                self.open_series_button.configure(state=tk.NORMAL)
                 # Cambiar texto del botón según el tipo
                 result_type = getattr(self.selected_series, 'type_s', 'collection')
                 if result_type == 'issue':
-                    self.open_series_button.config(text="🌐 Abrir ejemplar")
+                    self.open_series_button.configure(text="🌐 Abrir ejemplar")
                 elif result_type == 'saga':
-                    self.open_series_button.config(text="🌐 Abrir saga")
+                    self.open_series_button.configure(text="🌐 Abrir saga")
                 else:
-                    self.open_series_button.config(text="🌐 Abrir colección")
+                    self.open_series_button.configure(text="🌐 Abrir colección")
             elif self.selected_issue:
-                self.open_series_button.config(state=tk.NORMAL)
-                self.open_series_button.config(text="🌐 Abrir ejemplar")
+                self.open_series_button.configure(state=tk.NORMAL)
+                self.open_series_button.configure(text="🌐 Abrir ejemplar")
             else:
-                self.open_series_button.config(state=tk.DISABLED)
+                self.open_series_button.configure(state=tk.DISABLED)
 
     def _open_selected_series(self):
         '''Open selected series/issue in browser'''
@@ -2128,7 +2128,7 @@ class SearchDialog(ctk.CTkToplevel):
         
         # Add loading placeholder
         loading_item = self.results_tree.insert('', 'end', text="Buscando...", tags=('loading',))
-        self.status_label.config(text="Conectando con TebeoSfera...")
+        self.status_label.configure(text="Conectando con TebeoSfera...")
         self.update()
         
         # Log the search
@@ -2139,7 +2139,7 @@ class SearchDialog(ctk.CTkToplevel):
             try:
                 # Update status
                 def update_status(msg):
-                    self.after(0, lambda: self.status_label.config(text=msg))
+                    self.after(0, lambda: self.status_label.configure(text=msg))
                     self.after(0, lambda: self._log(msg))
                 
                 update_status("Conectando con TebeoSfera...")
@@ -2182,7 +2182,7 @@ class SearchDialog(ctk.CTkToplevel):
                         status_msg = "Sin resultados"
                         if info_line:
                             status_msg += f"\n{info_line}"
-                        self.status_label.config(text=status_msg)
+                        self.status_label.configure(text=status_msg)
                         self._log("❌ Sin resultados encontrados")
                         return
 
@@ -2241,7 +2241,7 @@ class SearchDialog(ctk.CTkToplevel):
                     status_text = f"{len(results)} resultados: {type_counts['issue']} issues, {type_counts['collection']} series, {type_counts['saga']} sagas"
                     if info_line:
                         status_text += f"\n{info_line}"
-                    self.status_label.config(text=status_text + " - Comparando portadas...")
+                    self.status_label.configure(text=status_text + " - Comparando portadas...")
                     self._log(f"✅ {len(results)} resultados encontrados")
                     self._log(f"   📖 {type_counts['issue']} issues individuales (con metadata completa)")
                     self._log(f"   📚 {type_counts['collection']} colecciones (listas de issues)")
@@ -2253,13 +2253,13 @@ class SearchDialog(ctk.CTkToplevel):
                     if self.comic.cover_image:
                         self._compare_covers_with_results(results)
                     else:
-                        self.status_label.config(text=f"{len(results)} series encontradas")
+                        self.status_label.configure(text=f"{len(results)} series encontradas")
                         self._log("ℹ️ Sin portada disponible para comparación")
 
                 self.after(0, update_results)
             except Exception as e:
                 error_msg = f"Error en búsqueda: {str(e)}"
-                self.after(0, lambda: self.status_label.config(text=error_msg))
+                self.after(0, lambda: self.status_label.configure(text=error_msg))
                 self.after(0, lambda: self._log(f"❌ {error_msg}"))
                 self.after(0, lambda: messagebox.showerror("Error", error_msg))
 
@@ -2274,7 +2274,7 @@ class SearchDialog(ctk.CTkToplevel):
             self.similarity_scores = []
             
             def update_status(msg):
-                self.after(0, lambda: self.status_label.config(text=msg))
+                self.after(0, lambda: self.status_label.configure(text=msg))
                 self.after(0, lambda: self._log(msg))
 
             update_status(f"Descargando {len(results)} portadas para comparar...")
@@ -2370,10 +2370,10 @@ class SearchDialog(ctk.CTkToplevel):
                         self._show_series_preview(self.selected_series)
 
                         status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
-                        self.status_label.config(text=status_msg)
+                        self.status_label.configure(text=status_msg)
                         self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
                     else:
-                        self.status_label.config(text=f"{len(results)} resultados encontrados")
+                        self.status_label.configure(text=f"{len(results)} resultados encontrados")
                         self._log("ℹ️ Comparación completada")
 
                 self.after(0, update_ui)
@@ -2890,15 +2890,15 @@ class SearchDialog(ctk.CTkToplevel):
             return
 
         self.mode = 'issues'
-        self.back_button.config(state=tk.NORMAL)
+        self.back_button.configure(state=tk.NORMAL)
         self.results_label.config(text="Issues de '{0}':".format(self.selected_series.series_name_s))
-        self.select_button.config(text="✓ Seleccionar Issue", command=self._select_issue)
+        self.select_button.configure(text="✓ Seleccionar Issue", command=self._select_issue)
         self.selected_issue = None
         self._update_open_buttons()
 
         self.results_listbox.delete(0, tk.END)
         self.results_listbox.insert(tk.END, "Cargando issues...")
-        self.status_label.config(text="Obteniendo issues de la serie...")
+        self.status_label.configure(text="Obteniendo issues de la serie...")
         self.update()
 
         # Query issues in background
@@ -2911,7 +2911,7 @@ class SearchDialog(ctk.CTkToplevel):
 
                 if not issues:
                     self.results_listbox.insert(tk.END, "Sin issues encontrados")
-                    self.status_label.config(text="Sin issues")
+                    self.status_label.configure(text="Sin issues")
                     return
 
                 # Display issues first
@@ -2919,13 +2919,13 @@ class SearchDialog(ctk.CTkToplevel):
                     display_text = "#{0} - {1}".format(issue.issue_num_s, issue.title_s)
                     self.results_listbox.insert(tk.END, display_text)
 
-                self.status_label.config(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
+                self.status_label.configure(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
 
                 # Start image comparison if comic has a cover
                 if self.comic.cover_image:
                     self._compare_covers_with_issues(issues)
                 else:
-                    self.status_label.config(text="{0} issues encontrados".format(len(issues)))
+                    self.status_label.configure(text="{0} issues encontrados".format(len(issues)))
 
             self.after(0, update_issues)
 
@@ -2979,11 +2979,11 @@ class SearchDialog(ctk.CTkToplevel):
                         self._show_issue_preview(self.selected_issue)
 
                         best_score = self.similarity_scores[self.best_match_index]
-                        self.status_label.config(
+                        self.status_label.configure(
                             text="Mejor match encontrado: {0:.0f}% similar (⭐ marcado)".format(best_score)
                         )
                     else:
-                        self.status_label.config(text="{0} issues encontrados".format(len(issues)))
+                        self.status_label.configure(text="{0} issues encontrados".format(len(issues)))
 
                 self.after(0, update_ui)
 
@@ -3025,9 +3025,9 @@ class SearchDialog(ctk.CTkToplevel):
     def _back_to_series(self):
         '''Go back to series search results'''
         self.mode = 'series'
-        self.back_button.config(state=tk.DISABLED)
+        self.back_button.configure(state=tk.DISABLED)
         self.results_label.config(text="Series encontradas:")
-        self.select_button.config(text="Ver Issues →", command=self._view_issues)
+        self.select_button.configure(text="Ver Issues →", command=self._view_issues)
         self.selected_issue = None
         self._update_open_buttons()
 
@@ -3044,10 +3044,10 @@ class SearchDialog(ctk.CTkToplevel):
 
         if self.best_match_index >= 0 and self.best_match_index < len(self.similarity_scores):
             best_score = self.similarity_scores[self.best_match_index]
-            self.status_label.config(text="{0} series encontradas - Mejor match: {1:.0f}% similar".format(
+            self.status_label.configure(text="{0} series encontradas - Mejor match: {1:.0f}% similar".format(
                 len(self.search_results), best_score))
         else:
-            self.status_label.config(text="{0} series encontradas".format(len(self.search_results)))
+            self.status_label.configure(text="{0} series encontradas".format(len(self.search_results)))
             
         # Update preview label size info
         self.preview_label.config(text="Selecciona un resultado para ver su portada\n(Vista previa ampliada)")
@@ -3058,7 +3058,7 @@ class SearchDialog(ctk.CTkToplevel):
             messagebox.showwarning("Advertencia", "Selecciona un issue primero")
             return
 
-        self.status_label.config(text="Obteniendo metadatos completos...")
+        self.status_label.configure(text="Obteniendo metadatos completos...")
         self.update()
 
         # Query full issue details in background
@@ -3072,13 +3072,13 @@ class SearchDialog(ctk.CTkToplevel):
                     self.comic.selected_issue = self.selected_issue
                     self.comic.status = 'selected'
 
-                    self.status_label.config(text="Metadatos obtenidos correctamente")
+                    self.status_label.configure(text="Metadatos obtenidos correctamente")
                     messagebox.showinfo("Éxito",
                         "Issue seleccionado:\n{0} #{1}\n\nAhora puedes generar el ComicInfo.xml".format(
                             issue.series_name_s, issue.issue_num_s))
                     self.destroy()
                 else:
-                    self.status_label.config(text="Error obteniendo metadatos")
+                    self.status_label.configure(text="Error obteniendo metadatos")
                     messagebox.showerror("Error", "No se pudieron obtener los metadatos del issue")
 
             self.after(0, complete_selection)
@@ -3150,7 +3150,7 @@ class BatchSearchDialog(SearchDialog):
             messagebox.showwarning("Advertencia", "Selecciona un issue primero")
             return
 
-        self.status_label.config(text="Obteniendo metadatos completos...")
+        self.status_label.configure(text="Obteniendo metadatos completos...")
         self.update()
 
         # Query full issue details in background
@@ -3164,11 +3164,11 @@ class BatchSearchDialog(SearchDialog):
                     self.comic.selected_issue = self.selected_issue
                     self.comic.status = 'selected'
 
-                    self.status_label.config(text="Metadatos obtenidos correctamente")
+                    self.status_label.configure(text="Metadatos obtenidos correctamente")
                     # Auto-close without showing success message in batch mode
                     self.destroy()
                 else:
-                    self.status_label.config(text="Error obteniendo metadatos")
+                    self.status_label.configure(text="Error obteniendo metadatos")
                     messagebox.showerror("Error", "No se pudieron obtener los metadatos del issue")
 
             self.after(0, complete_selection)
