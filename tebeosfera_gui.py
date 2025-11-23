@@ -32,7 +32,7 @@ TEBEOSFERA_BASE_URL = "https://www.tebeosfera.com"
 MAX_FILENAME_LENGTH = 60  # Maximum characters for filename display in dialogs
 
 # CustomTkinter button color constants
-CTK_BUTTON_ACTIVE_COLOR = ("gray75", "#3B8ED0")  # Active button color (CTk default blue)
+CTK_BUTTON_ACTIVE_COLOR = ("#3B8ED0", "#1f6aa5")  # Active button color (CTk default blue)
 CTK_BUTTON_INACTIVE_COLOR = "gray50"  # Inactive button color
 
 # Default color scheme for the application (legacy, kept for compatibility)
