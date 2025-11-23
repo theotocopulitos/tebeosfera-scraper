@@ -135,10 +135,19 @@ except ImportError as e:
     print("Install with: pip install customtkinter pillow")
     sys.exit(1)
 
-# Configure customtkinter appearance at module level (before creating any windows)
-# This must be done here, not in __init__, especially on Windows
-ctk.set_appearance_mode("light")  # Modes: "System" (default), "Dark", "Light"
-ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
+# Configure customtkinter appearance only when running as main app
+def _configure_ctk_appearance():
+    ctk.set_appearance_mode("light")  # "System", "Dark", "Light"
+    ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
+
+def main():
+    '''Main entry point for GUI'''
+    _configure_ctk_appearance()
+    app = TebeoSferaGUI()
+    app.mainloop()
+
+if __name__ == '__main__':
+    main()
 
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
 SEARCH_PREVIEW_SIZE = (460, 690)
