@@ -61,8 +61,13 @@ def set_toggle_button_colors(active_button, inactive_button):
     inactive_button.configure(fg_color=CTK_BUTTON_INACTIVE_COLOR)
 
 
-def build_series_url(series_key_or_path):
-    """Build absolute URL for a series."""
+def build_series_url(series_key_or_path, type_s='collection'):
+    """Build absolute URL for a series, collection, or saga.
+    
+    Args:
+        series_key_or_path: Series key/slug or full path
+        type_s: Type of series - 'saga', 'collection', or 'issue' (default: 'collection')
+    """
     if not series_key_or_path:
         return None
 
@@ -71,8 +76,23 @@ def build_series_url(series_key_or_path):
         return path
 
     if not path.startswith('/'):
-        # assume slug
-        path = f"/colecciones/{path}"
+        # Determine the correct path based on type
+        if type_s == 'saga':
+            path = f"/sagas/{path}"
+        elif type_s == 'issue':
+            # Issues should use build_issue_url, but handle it here for compatibility
+            path = f"/numeros/{path}"
+        else:
+            # Default to collection
+            path = f"/colecciones/{path}"
+    else:
+        # Path already starts with /, check if it needs type correction
+        if type_s == 'saga' and '/colecciones/' in path:
+            # Replace /colecciones/ with /sagas/ if it's a saga
+            path = path.replace('/colecciones/', '/sagas/')
+        elif type_s == 'collection' and '/sagas/' in path:
+            # Replace /sagas/ with /colecciones/ if it's a collection
+            path = path.replace('/sagas/', '/colecciones/')
 
     if not path.endswith('.html'):
         path = f"{path}.html"
@@ -1999,10 +2019,10 @@ class SearchDialog(ctk.CTkToplevel):
             url = build_issue_url(series_key)
             tipo = "ejemplar"
         elif result_type == 'saga':
-            url = build_series_url(series_key)
+            url = build_series_url(series_key, type_s='saga')
             tipo = "saga"
         else:
-            url = build_series_url(series_key)
+            url = build_series_url(series_key, type_s='collection')
             tipo = "colección"
 
         if url:
