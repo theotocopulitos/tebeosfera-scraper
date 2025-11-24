@@ -3042,6 +3042,8 @@ class SearchDialog(ctk.CTkToplevel):
             'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
             'language_iso': 'es',
             'format': issue.format_s,
+            'binding': issue.binding_s,
+            'dimensions': issue.dimensions_s,
             'isbn': issue.isbn_s,
             'legal_deposit': issue.legal_deposit_s,
             'price': issue.price_s,
@@ -3382,49 +3384,6 @@ class SearchDialog(ctk.CTkToplevel):
         thread = threading.Thread(target=query_details)
         thread.daemon = True
         thread.start()
-
-    def _issue_to_metadata_dict(self, issue):
-        '''Convert Issue object to metadata dictionary'''
-        # Debug: log summary content
-        if issue.summary_s:
-            self._log(f"[OK] Summary presente en Issue: {len(issue.summary_s)} chars - {issue.summary_s[:50]}...")
-        else:
-            self._log("[WARN] Summary vacio en Issue")
-        
-        metadata = {
-            'title': issue.title_s,
-            'series': issue.series_name_s,
-            'number': issue.issue_num_s,
-            'count': issue.issue_count_n if issue.issue_count_n > 0 else None,
-            'volume': issue.volume_year_n if issue.volume_year_n > 0 else None,
-            'summary': issue.summary_s,
-            'publisher': issue.publisher_s,
-            'year': issue.pub_year_n if issue.pub_year_n > 0 else None,
-            'month': issue.pub_month_n if issue.pub_month_n > 0 else None,
-            'day': issue.pub_day_n if issue.pub_day_n > 0 else None,
-            'writer': issue.writers_sl,
-            'penciller': issue.pencillers_sl,
-            'inker': issue.inkers_sl,
-            'colorist': issue.colorists_sl,
-            'letterer': issue.letterers_sl,
-            'cover_artist': issue.cover_artists_sl,
-            'editor': issue.editors_sl,
-            'translator': issue.translators_sl,
-            'genre': ', '.join(issue.crossovers_sl) if issue.crossovers_sl else None,  # Genres stored in crossovers
-            'characters': ', '.join(issue.characters_sl) if issue.characters_sl else None,
-            'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
-            'language_iso': 'es',  # Default Spanish
-            'format': issue.format_s,
-            'binding': issue.binding_s,
-            'dimensions': issue.dimensions_s,
-            'isbn': issue.isbn_s,
-            'legal_deposit': issue.legal_deposit_s,
-            'price': issue.price_s,
-            'original_title': issue.origin_title_s,
-            'original_publisher': issue.origin_publisher_s,
-            'web': issue.webpage_s  # Changed from 'webpage' to 'web'
-        }
-        return metadata
 
 
 class BatchSearchDialog(SearchDialog):
