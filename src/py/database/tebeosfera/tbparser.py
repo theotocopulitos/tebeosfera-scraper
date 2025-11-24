@@ -438,6 +438,19 @@ class TebeoSferaParser(object):
                     if not name:
                         continue
                     
+                    # Check if the link has a title attribute with full name
+                    # Format is typically "name -full name-" in the title
+                    title_attr = link.get('title', '')
+                    if title_attr:
+                        # Try to extract full name from title attribute
+                        # Expected format: "name -full name-"
+                        full_name_match = re.search(r'-([^-]+)-', title_attr)
+                        if full_name_match:
+                            full_name = self._clean_text(full_name_match.group(1))
+                            if full_name and full_name != name:
+                                # Format as "full name (name)"
+                                name = "{0} ({1})".format(full_name, name)
+                    
                     # Historietista = guionista + dibujante
                     if 'historietista' in role:
                         if name not in metadata['writers']:
