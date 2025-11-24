@@ -1289,6 +1289,9 @@ class TebeoSferaGUI(ctk.CTk):
         
         remaining = []
         for key, value in metadata.items():
+            # Skip internal keys (those starting with underscore)
+            if key.startswith('_'):
+                continue
             if key not in processed_keys and value and str(value).strip() and str(value).strip() not in ['-1', 'Unknown', '']:
                 label = field_labels.get(key, key)
                 remaining.append((label, value))
