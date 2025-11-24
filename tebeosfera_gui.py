@@ -1068,6 +1068,10 @@ class TebeoSferaGUI(ctk.CTk):
                 # Parse XML to dictionary
                 self.current_metadata_dict = self._parse_comicinfo_xml(metadata_xml)
                 
+                # Ensure default view is "pretty"
+                self.metadata_view_mode.set("pretty")
+                set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
+                
                 # Display in current mode
                 self._render_metadata_view()
                 
@@ -1119,7 +1123,12 @@ class TebeoSferaGUI(ctk.CTk):
         self.metadata_display.config(state=tk.NORMAL)
         self.metadata_display.delete('1.0', tk.END)
         
+        # Ensure mode is set to pretty if not explicitly set
         mode = self.metadata_view_mode.get()
+        if not mode or mode == "":
+            mode = "pretty"
+            self.metadata_view_mode.set("pretty")
+            set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
         
         if mode == "xml":
             # Show formatted XML
@@ -1137,51 +1146,166 @@ class TebeoSferaGUI(ctk.CTk):
         else:  # pretty mode
             # Show formatted key-value pairs
             if self.current_metadata_dict:
-                # Field mapping for better display
-                field_labels = {
-                    'Title': '📖 Título',
-                    'Series': '📚 Serie',
-                    'Number': '🔢 Número',
-                    'Count': '📊 Total',
-                    'Volume': '📙 Volumen',
-                    'Summary': '📝 Resumen',
-                    'Notes': '📋 Notas',
-                    'Publisher': '🏢 Editorial',
-                    'Imprint': '🏷️ Sello',
-                    'Genre': '🎭 Género',
-                    'Web': '🌐 Web',
-                    'PageCount': '📄 Páginas',
-                    'LanguageISO': '🌍 Idioma',
-                    'Format': '📐 Formato',
-                    'AgeRating': '🔞 Edad',
-                    'Writer': '✍️ Guionista',
-                    'Penciller': '🖊️ Dibujante',
-                    'Inker': '🖋️ Entintador',
-                    'Colorist': '🎨 Colorista',
-                    'Letterer': '✒️ Letrista',
-                    'CoverArtist': '🖼️ Portadista',
-                    'Editor': '📝 Editor',
-                    'Translator': '🔤 Traductor',
-                    'Year': '📅 Año',
-                    'Month': '📅 Mes',
-                    'Day': '📅 Día',
-                }
-                
-                output = []
-                for key, value in self.current_metadata_dict.items():
-                    label = field_labels.get(key, key)
-                    
-                    # Special handling for long fields
-                    if key in ['Summary', 'Notes']:
-                        output.append(f"\n{label}:\n{value}\n")
-                    else:
-                        output.append(f"{label}: {value}")
-                
-                self.metadata_display.insert('1.0', '\n'.join(output))
+                text = self._format_metadata_pretty(self.current_metadata_dict)
+                self.metadata_display.insert('1.0', text)
             else:
                 self.metadata_display.insert('1.0', "No se pudieron parsear los metadatos")
         
         self.metadata_display.config(state=tk.DISABLED)
+    
+    def _format_metadata_pretty(self, metadata):
+        '''Format metadata dictionary for beautiful display with all fields'''
+        if not metadata:
+            return "No hay metadatos disponibles"
+        
+        # Comprehensive field mapping with emojis and organized sections
+        field_labels = {
+            # Basic Info
+            'Title': '📖 Título',
+            'Series': '📚 Serie',
+            'Number': '🔢 Número',
+            'Count': '📊 Total números',
+            'Volume': '📙 Volumen',
+            'AlternateSeries': '🔄 Serie alterna',
+            'AlternateNumber': '🔄 Número alterno',
+            'AlternateCount': '🔄 Total alterno',
+            
+            # Story
+            'Summary': '📝 Resumen',
+            'Notes': '📋 Notas',
+            'StoryArc': '📖 Arco argumental',
+            'StoryArcNumber': '📖 Número de arco',
+            'SeriesGroup': '📚 Grupo de series',
+            
+            # Publishing
+            'Publisher': '🏢 Editorial',
+            'Imprint': '🏷️ Sello',
+            'Genre': '🎭 Género',
+            'Tags': '🏷️ Etiquetas',
+            'Web': '🌐 Web',
+            'PageCount': '📄 Páginas',
+            'LanguageISO': '🌍 Idioma',
+            'Format': '📐 Formato',
+            'AgeRating': '🔞 Clasificación',
+            'GTIN': '📘 GTIN (ISBN)',
+            
+            # Dates
+            'Year': '📅 Año',
+            'Month': '📅 Mes',
+            'Day': '📅 Día',
+            
+            # People
+            'Writer': '✍️ Guionista',
+            'Penciller': '🖊️ Dibujante',
+            'Inker': '🖋️ Entintador',
+            'Colorist': '🎨 Colorista',
+            'Letterer': '✒️ Letrista',
+            'CoverArtist': '🖼️ Portadista',
+            'Editor': '📝 Editor',
+            'Translator': '🔤 Traductor',
+            
+            # Story elements
+            'Characters': '👤 Personajes',
+            'Teams': '👥 Equipos',
+            'Locations': '📍 Ubicaciones',
+            'MainCharacterOrTeam': '⭐ Personaje/Equipo principal',
+            
+            # Format details
+            'BlackAndWhite': '⚫ Blanco y negro',
+            'Manga': '🇯🇵 Manga',
+            'ScanInformation': '📷 Información de escaneo',
+            'Review': '⭐ Reseña',
+            'CommunityRating': '⭐ Valoración comunitaria',
+        }
+        
+        # Organize fields into sections
+        sections = {
+            'Información básica': ['Title', 'Series', 'Number', 'Count', 'Volume', 
+                                   'AlternateSeries', 'AlternateNumber', 'AlternateCount'],
+            'Historia': ['Summary', 'StoryArc', 'StoryArcNumber', 'SeriesGroup', 'Notes'],
+            'Publicación': ['Publisher', 'Imprint', 'Genre', 'Tags', 'Web', 'PageCount', 
+                           'LanguageISO', 'Format', 'AgeRating', 'GTIN'],
+            'Fecha': ['Year', 'Month', 'Day'],
+            'Equipo creativo': ['Writer', 'Penciller', 'Inker', 'Colorist', 'Letterer', 
+                               'CoverArtist', 'Editor', 'Translator'],
+            'Elementos de la historia': ['Characters', 'Teams', 'Locations', 'MainCharacterOrTeam'],
+            'Detalles': ['BlackAndWhite', 'Manga', 'ScanInformation', 'Review', 'CommunityRating'],
+        }
+        
+        output = []
+        
+        # Process each section
+        for section_name, field_keys in sections.items():
+            section_fields = []
+            for key in field_keys:
+                if key in metadata and metadata[key] and str(metadata[key]).strip():
+                    value = str(metadata[key]).strip()
+                    if value and value not in ['-1', 'Unknown', '']:
+                        label = field_labels.get(key, key)
+                        section_fields.append((key, label, value))
+            
+            if section_fields:
+                # Beautiful section header with double underline
+                output.append("")
+                output.append(f"  {section_name.upper()}")
+                output.append("  " + "═" * 56)
+                output.append("")
+                
+                for key, label, value in section_fields:
+                    # Special formatting for long fields
+                    if key in ['Summary', 'Notes', 'Review']:
+                        output.append(f"  {label}")
+                        output.append("  " + "─" * 56)
+                        # Wrap long text with proper indentation
+                        words = value.split()
+                        line = ""
+                        for word in words:
+                            if len(line) + len(word) + 1 > 65:
+                                output.append(f"    {line}")
+                                line = word
+                            else:
+                                line = f"{line} {word}" if line else word
+                        if line:
+                            output.append(f"    {line}")
+                        output.append("")
+                    elif key in ['Characters', 'Teams', 'Locations', 'Writer', 'Penciller', 
+                                'Inker', 'Colorist', 'Letterer', 'CoverArtist', 'Editor', 'Translator']:
+                        # Format comma-separated lists nicely
+                        items = [item.strip() for item in value.split(',') if item.strip()]
+                        if items:
+                            output.append(f"  {label}")
+                            output.append("  " + "─" * 56)
+                            for item in items:
+                                output.append(f"    • {item}")
+                            output.append("")
+                    else:
+                        # Regular field with nice formatting
+                        output.append(f"  {label:<25} {value}")
+        
+        # Add any remaining fields not in sections
+        processed_keys = set()
+        for section_fields in sections.values():
+            processed_keys.update(section_fields)
+        
+        remaining = []
+        for key, value in metadata.items():
+            if key not in processed_keys and value and str(value).strip() and str(value).strip() not in ['-1', 'Unknown', '']:
+                label = field_labels.get(key, key)
+                remaining.append((label, value))
+        
+        if remaining:
+            output.append("")
+            output.append("  OTROS")
+            output.append("  " + "═" * 56)
+            output.append("")
+            for label, value in remaining:
+                output.append(f"  {label:<25} {value}")
+        
+        # Remove leading empty line
+        if output and output[0] == "":
+            output.pop(0)
+        
+        return '\n'.join(output) if output else "No hay metadatos disponibles"
     
     def _extract_comicinfo(self, filepath):
         '''Extract ComicInfo.xml from CBZ/CBR file'''
@@ -2819,18 +2943,31 @@ class SearchDialog(ctk.CTkToplevel):
                     # Convert to metadata dict (similar to main GUI)
                     metadata_dict = self._issue_to_metadata_dict(issue)
                     
-                    # Generate XML
+                    # Generate XML (use lowercase version for XML generation)
                     from comicinfo_xml import ComicInfoGenerator
                     xml_generator = ComicInfoGenerator()
-                    xml_content = xml_generator.generate_xml(metadata_dict)
+                    xml_dict = metadata_dict.get('_xml_dict', {k.lower(): v for k, v in metadata_dict.items() if not k.startswith('_')})
+                    xml_content = xml_generator.generate_xml(xml_dict)
                     
                     # Store for toggling
                     self.current_metadata_xml = xml_content
                     self.current_metadata_dict = metadata_dict
                     self.current_issue = issue
                     
-                    # Display based on current view mode
-                    self._toggle_metadata_view()
+                    # Display in pretty mode by default
+                    self.metadata_view_mode.set('pretty')
+                    set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
+                    
+                    # Show formatted metadata directly using parent's method for consistency
+                    self.metadata_display.config(state=tk.NORMAL)
+                    self.metadata_display.delete('1.0', tk.END)
+                    # Always use parent's _format_metadata_pretty to ensure exact same format
+                    if hasattr(self.parent, '_format_metadata_pretty'):
+                        text = self.parent._format_metadata_pretty(self.current_metadata_dict)
+                    else:
+                        text = self._format_metadata_pretty(self.current_metadata_dict)
+                    self.metadata_display.insert('1.0', text)
+                    self.metadata_display.config(state=tk.DISABLED)
                     
                     # Enable apply button
                     self.apply_xml_button.configure(state=tk.NORMAL)
@@ -2848,8 +2985,37 @@ class SearchDialog(ctk.CTkToplevel):
         thread.start()
     
     def _issue_to_metadata_dict(self, issue):
-        '''Convert Issue object to metadata dictionary (same as main GUI)'''
+        '''Convert Issue object to metadata dictionary with XML field names (Title, Series, etc.)'''
+        # Convert to XML field names (Title, Series, etc.) for compatibility with _format_metadata_pretty
         metadata = {
+            'Title': issue.title_s,
+            'Series': issue.series_name_s,
+            'Number': issue.issue_num_s,
+            'Count': issue.issue_count_n if issue.issue_count_n > 0 else None,
+            'Volume': issue.volume_year_n if issue.volume_year_n > 0 else None,
+            'Summary': issue.summary_s,
+            'Publisher': issue.publisher_s,
+            'Year': issue.pub_year_n if issue.pub_year_n > 0 else None,
+            'Month': issue.pub_month_n if issue.pub_month_n > 0 else None,
+            'Day': issue.pub_day_n if issue.pub_day_n > 0 else None,
+            'Writer': issue.writers_sl,
+            'Penciller': issue.pencillers_sl,
+            'Inker': issue.inkers_sl,
+            'Colorist': issue.colorists_sl,
+            'Letterer': issue.letterers_sl,
+            'CoverArtist': issue.cover_artists_sl,
+            'Editor': issue.editors_sl,
+            'Translator': issue.translators_sl,
+            'Genre': ', '.join(issue.crossovers_sl) if issue.crossovers_sl else None,
+            'Characters': ', '.join(issue.characters_sl) if issue.characters_sl else None,
+            'PageCount': issue.page_count_n if issue.page_count_n > 0 else None,
+            'LanguageISO': 'es',
+            'Format': issue.format_s,
+            'GTIN': issue.isbn_s,  # Use GTIN instead of isbn
+            'Web': issue.webpage_s
+        }
+        # Also create lowercase version for XML generation (ComicInfoGenerator expects lowercase)
+        metadata_lower = {
             'title': issue.title_s,
             'series': issue.series_name_s,
             'number': issue.issue_num_s,
@@ -2873,8 +3039,6 @@ class SearchDialog(ctk.CTkToplevel):
             'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
             'language_iso': 'es',
             'format': issue.format_s,
-            'binding': issue.binding_s,
-            'dimensions': issue.dimensions_s,
             'isbn': issue.isbn_s,
             'legal_deposit': issue.legal_deposit_s,
             'price': issue.price_s,
@@ -2882,6 +3046,8 @@ class SearchDialog(ctk.CTkToplevel):
             'original_publisher': issue.origin_publisher_s,
             'web': issue.webpage_s
         }
+        # Store both versions - use uppercase for display, lowercase for XML generation
+        metadata['_xml_dict'] = metadata_lower
         return metadata
     
     def _toggle_metadata_view(self):
@@ -2891,6 +3057,9 @@ class SearchDialog(ctk.CTkToplevel):
         
         # Toggle the mode
         current = self.metadata_view_mode.get()
+        # Default to pretty if not set
+        if not current or current == "":
+            current = 'pretty'
         new_mode = 'xml' if current == 'pretty' else 'pretty'
         self.metadata_view_mode.set(new_mode)
         
@@ -2905,8 +3074,11 @@ class SearchDialog(ctk.CTkToplevel):
         self.metadata_display.delete('1.0', tk.END)
         
         if new_mode == 'pretty':
-            # Show formatted metadata
-            text = self._format_metadata_pretty(self.current_metadata_dict)
+            # Show formatted metadata using parent's method for consistency
+            if hasattr(self.parent, '_format_metadata_pretty'):
+                text = self.parent._format_metadata_pretty(self.current_metadata_dict)
+            else:
+                text = self._format_metadata_pretty(self.current_metadata_dict)
             self.metadata_display.insert('1.0', text)
         else:
             # Show XML
@@ -2918,48 +3090,13 @@ class SearchDialog(ctk.CTkToplevel):
         self.metadata_display.config(state=tk.DISABLED)
     
     def _format_metadata_pretty(self, metadata):
-        '''Format metadata dictionary for pretty display (same as main GUI)'''
-        # Use parent's method if available
+        '''Format metadata dictionary for pretty display - ALWAYS use parent's method for consistency'''
+        # Always use parent's method to ensure exact same format as main GUI
         if hasattr(self.parent, '_format_metadata_pretty'):
             return self.parent._format_metadata_pretty(metadata)
         
-        # Fallback implementation
-        lines = []
-        if metadata.get('title'):
-            lines.append(f"Título: {metadata['title']}")
-        if metadata.get('series'):
-            lines.append(f"Serie: {metadata['series']}")
-        if metadata.get('number'):
-            lines.append(f"Número: {metadata['number']}")
-        if metadata.get('count'):
-            lines.append(f"Total números: {metadata['count']}")
-        if metadata.get('volume'):
-            lines.append(f"Volumen: {metadata['volume']}")
-        if metadata.get('publisher'):
-            lines.append(f"Editorial: {metadata['publisher']}")
-        if metadata.get('year'):
-            date_parts = []
-            if metadata.get('day'):
-                date_parts.append(str(metadata['day']))
-            if metadata.get('month'):
-                date_parts.append(str(metadata['month']))
-            date_parts.append(str(metadata['year']))
-            lines.append(f"Fecha: {'/'.join(date_parts)}")
-        if metadata.get('summary'):
-            lines.append(f"\nResumen:\n{metadata['summary']}")
-        if metadata.get('writer'):
-            lines.append(f"\nGuionista: {metadata['writer']}")
-        if metadata.get('penciller'):
-            lines.append(f"Dibujante: {metadata['penciller']}")
-        if metadata.get('inker'):
-            lines.append(f"Entintador: {metadata['inker']}")
-        if metadata.get('colorist'):
-            lines.append(f"Colorista: {metadata['colorist']}")
-        if metadata.get('cover_artist'):
-            lines.append(f"Portadista: {metadata['cover_artist']}")
-        if metadata.get('web'):
-            lines.append(f"\nWeb: {metadata['web']}")
-        return '\n'.join(lines) if lines else 'Sin metadatos disponibles'
+        # This should never happen, but provide a basic fallback
+        return "Error: No se puede formatear los metadatos (método del parent no disponible)"
     
     def _apply_comicinfo_xml(self):
         '''Apply ComicInfo.xml to the comic file'''

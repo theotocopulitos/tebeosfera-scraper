@@ -487,8 +487,8 @@ class TebeoSferaParser(object):
                 parent = element.parent
                 if parent:
                     # Collect paragraphs after this marker
-                    # Limit to 10 paragraphs to avoid collecting unrelated content
-                    MAX_SYNOPSIS_PARAGRAPHS = 10
+                    # Limit to 30 paragraphs to capture complete synopsis
+                    MAX_SYNOPSIS_PARAGRAPHS = 30
                     
                     # Use find_next_siblings to get paragraph elements, which is more robust
                     # than iterating through next_sibling
