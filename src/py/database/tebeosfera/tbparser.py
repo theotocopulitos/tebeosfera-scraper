@@ -634,16 +634,32 @@ class TebeoSferaParser(object):
                 
                 # Build a more stable key from content if href isn't directly accessible here
                 key = None
-                link = next_result.find('a', href=True)
-                if link and link.get('href'):
-                   key = link.get('href').strip()
-                else:
-                   # Fallback: normalized snippet of the result's text and classes
-                   classes = " ".join(sorted(next_result.get('class', [])))
-                   text_snippet = self._clean_text(next_result.get_text()).strip()[:200]
-                   key = f"{classes}|{text_snippet}"
+                # Try to find the main content link (not image link)
+                links = next_result.find_all('a', href=True)
+                for link in links:
+                    href = link.get('href', '').strip()
+                    if href:
+                        # Prefer links to /numeros/, /colecciones/, or /sagas/ over image links
+                        if '/numeros/' in href or '/colecciones/' in href or '/sagas/' in href:
+                            key = href.strip()
+                            break
+                
+                # If no content link found, use first link
+                if not key and links:
+                    key = links[0].get('href', '').strip()
+                
+                # Fallback: normalized snippet of the result's text and classes
+                if not key:
+                    classes = " ".join(sorted(next_result.get('class', [])))
+                    text_snippet = self._clean_text(next_result.get_text()).strip()[:200]
+                    key = f"{classes}|{text_snippet}"
+                
+                # Normalize key (make absolute URL if relative)
+                if key and not key.startswith('http') and key.startswith('/'):
+                    key = 'https://www.tebeosfera.com' + key
 
                 if key in processed_keys:
+                   log.debug("  Skipping duplicate: {0}".format(key[:100]))
                    current_elem = next_result
                    continue
                 
@@ -654,6 +670,14 @@ class TebeoSferaParser(object):
                      next_header.sourceline < next_result.sourceline)):
                     # Next section header comes before next result, we're done with this section
                     break
+                
+                # Filter out header announcements - these appear in the page header/cabecera
+                # and are not actual collection items
+                if self._is_header_announcement(next_result, soup):
+                    log.debug("  Skipping header announcement: {0}".format(key[:100] if key else "unknown"))
+                    processed_keys.add(key)  # Mark as processed to avoid reprocessing
+                    current_elem = next_result
+                    continue
                 
                 #Mark as processed
                 processed_keys.add(key)
@@ -677,6 +701,25 @@ class TebeoSferaParser(object):
             log.debug("Found {0} linea_resultados divs via fallback".format(len(all_lines)))
             
             for line in all_lines:
+                # Check if already processed
+                link = line.find('a', href=True)
+                if link and link.get('href'):
+                    key = link.get('href').strip()
+                    if key in processed_keys:
+                        continue
+                    processed_keys.add(key)
+                
+                # Filter out header announcements - check if inside navbar-inner
+                navbar_inner = line.find_parent('div', class_='navbar-inner')
+                if navbar_inner:
+                    log.debug("  Skipping result inside navbar-inner in fallback: {0}".format(key[:100] if 'key' in locals() else "unknown"))
+                    continue
+                
+                # Also check using the existing method as fallback
+                if self._is_header_announcement(line, soup):
+                    log.debug("  Skipping header announcement in fallback: {0}".format(key[:100] if 'key' in locals() else "unknown"))
+                    continue
+                
                 # Try to determine type from link
                 result = self._parse_result_line_bs(line, None)  # Type will be auto-detected
                 if result:
@@ -693,6 +736,42 @@ class TebeoSferaParser(object):
             
             for link in numeros_links:
                 href = link.get('href', '')
+                if not href:
+                    continue
+                
+                # Normalize href to use as key
+                if not href.startswith('http'):
+                    href = 'https://www.tebeosfera.com' + href
+                
+                # Skip if already processed
+                if href in processed_keys:
+                    continue
+                processed_keys.add(href)
+                
+                # Check if this link is inside navbar-inner (header announcements area)
+                # These are not actual collection items
+                navbar_inner = link.find_parent('div', class_='navbar-inner')
+                if navbar_inner:
+                    log.debug("  Skipping link inside navbar-inner: {0}".format(href[:100]))
+                    continue
+                
+                # Also check for other header containers as fallback
+                parent = link.parent
+                depth = 0
+                while parent and depth < 5:
+                    parent_classes = parent.get('class', [])
+                    if isinstance(parent_classes, list):
+                        parent_classes_str = ' '.join(parent_classes).lower()
+                    else:
+                        parent_classes_str = str(parent_classes).lower()
+                    
+                    # Check for navbar-inner or other header containers
+                    if 'navbar-inner' in parent_classes_str:
+                        log.debug("  Skipping link in navbar-inner container: {0}".format(href[:100]))
+                        continue
+                    parent = parent.parent
+                    depth += 1
+                
                 match = re.search(r'/numeros/([^/]+)\.html', href)
                 if match:
                     slug = match.group(1)
@@ -702,6 +781,7 @@ class TebeoSferaParser(object):
                         parent = link.parent
                         if parent:
                             title = self._clean_text(parent.get_text())
+                    
                     
                     # Get thumbnail if available
                     thumb_url = None
@@ -715,7 +795,7 @@ class TebeoSferaParser(object):
                         result = {
                             'slug': slug,
                             'title': title,
-                            'url': href if href.startswith('http') else 'https://www.tebeosfera.com' + href,
+                            'url': href,
                             'thumb_url': thumb_url,
                             'type': 'issue'
                         }
@@ -874,6 +954,92 @@ class TebeoSferaParser(object):
 
         return None
 
+    def _is_header_announcement(self, line_div, soup):
+        '''
+        Check if a linea_resultados div is a header announcement (anuncio de nueva catalogación)
+        rather than an actual collection item.
+        
+        These announcements typically appear in the page header/cabecera area,
+        before the main content, and are not part of the actual collection.
+        
+        line_div: BeautifulSoup element (div with class linea_resultados)
+        soup: The full BeautifulSoup document
+        Returns: True if this appears to be a header announcement, False otherwise
+        '''
+        # Check if the element is in a header/cabecera area
+        # Look for common header container classes/ids
+        parent = line_div.parent
+        depth = 0
+        while parent and depth < 5:  # Check up to 5 levels up
+            parent_classes = parent.get('class', [])
+            parent_id = parent.get('id', '')
+            parent_tag = parent.name.lower() if parent.name else ''
+            
+            # Check for header-related containers
+            if any(keyword in str(parent_classes).lower() or keyword in str(parent_id).lower() 
+                   for keyword in ['header', 'cabecera', 'top', 'banner', 'anuncio', 'notice']):
+                log.debug("  Found header container: {0} (id: {1}, classes: {2})".format(
+                    parent_tag, parent_id, parent_classes))
+                return True
+            
+            parent = parent.parent
+            depth += 1
+        
+        # Check if the element appears before the main content area
+        # Look for common main content markers
+        main_content_markers = [
+            soup.find('div', id='contenido'),
+            soup.find('div', id='main'),
+            soup.find('div', class_=re.compile(r'contenido|main|body')),
+            soup.find('div', id='titulo_ficha'),  # Collection title area
+        ]
+        
+        # Find the first valid main content marker
+        main_content = None
+        for marker in main_content_markers:
+            if marker:
+                main_content = marker
+                break
+        
+        if main_content:
+            # Check if line_div appears before main_content in the document
+            line_pos = getattr(line_div, 'sourceline', None)
+            main_pos = getattr(main_content, 'sourceline', None)
+            
+            if line_pos and main_pos and line_pos < main_pos:
+                # Element is before main content, likely a header announcement
+                log.debug("  Element appears before main content (line {0} < {1})".format(
+                    line_pos, main_pos))
+                return True
+        
+        # Check the text content for announcement keywords
+        text = self._clean_text(line_div.get_text()).lower()
+        announcement_keywords = [
+            'nueva catalogación',
+            'nuevo número añadido',
+            'última actualización',
+            'recientemente añadido',
+            'nuevo en tebeosfera',
+        ]
+        
+        for keyword in announcement_keywords:
+            if keyword in text:
+                log.debug("  Found announcement keyword: {0}".format(keyword))
+                return True
+        
+        # Check if the link text suggests it's an announcement
+        links = line_div.find_all('a', href=re.compile(r'/numeros/'))
+        for link in links:
+            link_text = self._clean_text(link.get_text()).lower()
+            # Announcements often have generic or promotional text
+            if any(promo in link_text for promo in ['ver más', 'nuevo', 'añadido', 'actualizado']):
+                # But only if it's a short/link-like text, not a full title
+                if len(link_text) < 30:
+                    log.debug("  Found promotional link text: {0}".format(link_text[:50]))
+                    return True
+        
+        return False
+    
     def _clean_text(self, text):
         '''
         Clean HTML text by removing extra whitespace and decoding entities.

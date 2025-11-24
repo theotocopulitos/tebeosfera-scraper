@@ -219,6 +219,7 @@ class TebeoSferaDB(object):
         
         collections = []
         issue_refs = []
+        seen_issue_keys = set()  # Track processed issue slugs to avoid duplicates
         
         # Process results based on type
         for result in results:
@@ -251,6 +252,12 @@ class TebeoSferaDB(object):
             elif result_type == 'issue':
                 # Issues found in both saga and collection pages
                 issue_num = self._extract_issue_number(slug)
+                
+                # Check for duplicates using slug as key
+                if slug in seen_issue_keys:
+                    log.debug("    Skipping duplicate issue: {0}".format(slug))
+                    continue
+                seen_issue_keys.add(slug)
                 
                 thumb_url = result.get('thumb_url')
                 if thumb_url and not thumb_url.startswith('http'):
