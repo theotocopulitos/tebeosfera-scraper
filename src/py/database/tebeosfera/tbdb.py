@@ -62,9 +62,6 @@ class TebeoSferaDB(object):
         
         # Log a sample of the HTML to see what we're getting
         if html_content:
-            #sample = html_content[:2000] if len(html_content) > 2000 else html_content
-            #log.debug("HTML sample (first 2000 chars): ", sample[:2000])
-            
             # Check for common patterns that indicate results
             has_numeros = '/numeros/' in html_content
             has_colecciones = '/colecciones/' in html_content
@@ -183,10 +180,6 @@ class TebeoSferaDB(object):
             log.debug("ERROR: series_ref has no series_key attribute")
             return {'collections': [], 'issues': []}
         
-        print(f"[DEBUG] === query_series_children called ===")
-        print(f"[DEBUG] Series type: {series_type}")
-        print(f"[DEBUG] Series key: {series_key}")
-        print(f"[DEBUG] Series name: {getattr(series_ref, 'series_name_s', 'unknown')}")
         log.debug("=== query_series_children called ===")
         log.debug("Series type: {0}".format(series_type))
         log.debug("Series key: {0}".format(series_key))
@@ -194,27 +187,21 @@ class TebeoSferaDB(object):
         
         # Fetch the appropriate page based on type
         if series_type == 'saga':
-            print(f"[DEBUG] Fetching saga page for: {series_key}")
             log.debug("Fetching saga page for: {0}".format(series_key))
             html_content = self.connection.get_saga_page(series_key)
         else:
-            print(f"[DEBUG] Fetching collection page for: {series_key}")
             log.debug("Fetching collection page for: {0}".format(series_key))
             html_content = self.connection.get_collection_page(series_key)
             
         if not html_content:
-            print(f"[DEBUG] ERROR: Could not fetch {series_type} page for {series_key}")
             log.debug("ERROR: Could not fetch {0} page for {1}".format(series_type, series_key))
             return {'collections': [], 'issues': []}
         
-        print(f"[DEBUG] Fetched HTML content: {len(html_content)} bytes")
         log.debug("Fetched HTML content: {0} bytes".format(len(html_content)))
         
         # Parse search results from the page
-        print(f"[DEBUG] Parsing search results...")
         results = self.parser.parse_search_results(html_content)
         
-        print(f"[DEBUG] Parser returned {len(results)} results")
         log.debug("Parser returned {0} results".format(len(results)))
         
         collections = []
