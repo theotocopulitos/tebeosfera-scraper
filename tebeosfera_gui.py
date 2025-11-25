@@ -2757,7 +2757,7 @@ class SearchDialog(ctk.CTkToplevel):
                 error_msg = str(e)
                 self._log(f"❌ Error cargando hijos: {error_msg}")
                 print(f"Error loading children: {error_msg}")
-                traceback.print_exc()
+                self._log(traceback.format_exc())
                 
                 def show_error():
                     error_id = self.results_tree.insert(item_id, 'end', text=f"Error: {error_msg[:50]}", tags=('empty',))
