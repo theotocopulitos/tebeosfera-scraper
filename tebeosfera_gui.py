@@ -23,6 +23,7 @@ import threading
 import queue
 import re
 import shutil
+import traceback
 import webbrowser
 from time import strftime
 
@@ -2632,7 +2633,6 @@ class SearchDialog(ctk.CTkToplevel):
                     print(f"[DEBUG GUI] Got item_id from focus: {item_id}")
         except Exception as e:
             print(f"[DEBUG GUI] Error getting item_id: {e}")
-            import traceback
             traceback.print_exc()
             # Fallback: try to get from selection
             item_id = self.results_tree.focus()
@@ -2753,7 +2753,6 @@ class SearchDialog(ctk.CTkToplevel):
                 self.after(0, update_tree)
             except Exception as e:
                 # Log error and show in tree
-                import traceback
                 error_msg = str(e)
                 self._log(f"❌ Error cargando hijos: {error_msg}")
                 print(f"Error loading children: {error_msg}")
