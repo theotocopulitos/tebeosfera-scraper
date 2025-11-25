@@ -2970,7 +2970,9 @@ class SearchDialog(ctk.CTkToplevel):
         '''Convert Issue object to metadata dictionary with XML field names (Title, Series, etc.)'''
         # Convert to XML field names (Title, Series, etc.) for compatibility with _format_metadata_pretty
         metadata = {
-            'Title': issue.title_s,
+            # Ensure all expected metadata fields exist before XML generation
+            comic.metadata = self._ensure_all_metadata_fields(comic.metadata or {})
+            xml_content = self.xml_generator.generate_xml(comic.metadata)
             'Series': issue.series_name_s,
             'Number': issue.issue_num_s,
             'Count': issue.issue_count_n if issue.issue_count_n > 0 else None,
