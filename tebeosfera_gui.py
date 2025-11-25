@@ -1921,8 +1921,6 @@ class SearchDialog(ctk.CTkToplevel):
                         # Try to trigger expansion manually
                         print(f"[DEBUG GUI] Click on tree item {item_id}, has {len(children)} children")
         self.results_tree.bind('<Button-1>', on_tree_click)
-        print("[DEBUG GUI] Tree expansion event bound to _on_tree_expand")
-
         scrollbar.config(command=self.results_tree.yview)
         
         # Store tree item data: {item_id: (type, object)}
