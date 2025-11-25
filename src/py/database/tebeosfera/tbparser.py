@@ -742,24 +742,26 @@ class TebeoSferaParser(object):
         # This handles cases where the HTML structure is different
         if not results:
             log.debug("Still no results, trying direct /numeros/ link scan")
-            
+
             # Find all links to /numeros/ pages
             numeros_links = soup.find_all('a', href=re.compile(r'/numeros/[^/]+\.html'))
             log.debug("Found {0} /numeros/ links via direct scan".format(len(numeros_links)))
-            
+
             for link in numeros_links:
                 href = link.get('href', '')
                 if not href:
                     continue
-                
-                # Normalize href to use as key
-                if not href.startswith('http'):
-                    href = 'https://www.tebeosfera.com' + href
-                
+
+                # Use the relative href as deduplication key for consistency
+                key = href
+
                 # Skip if already processed
-                if href in processed_keys:
+                if key in processed_keys:
                     continue
-                processed_keys.add(href)
+                processed_keys.add(key)
+
+                # Build absolute URL for the result only
+                abs_href = href if href.startswith('http') else 'https://www.tebeosfera.com' + href
                 
                 # Check if this link is inside navbar-inner (header announcements area)
                 # These are not actual collection items
