@@ -14,6 +14,7 @@ import urllib.error
 import re
 import gzip
 import os
+import ssl
 from utils_compat import sstr
 
 
@@ -48,9 +49,21 @@ class TebeoSferaConnection(object):
         '''Initialize HTTP session with cookies and headers'''
         # Create cookie handler
         cookie_handler = urllib.request.HTTPCookieProcessor()
+        
+        handlers = [cookie_handler]
+        
+        # Create unverified SSL context to avoid certificate errors
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            https_handler = urllib.request.HTTPSHandler(context=ctx)
+            handlers.append(https_handler)
+        except Exception as e:
+            print("Warning: Could not setup SSL context: {0}".format(e))
 
-        # Create opener with cookie support
-        self.__session_opener = urllib.request.build_opener(cookie_handler)
+        # Create opener with cookie support and SSL handler
+        self.__session_opener = urllib.request.build_opener(*handlers)
 
         # Set user agent
         self.__session_opener.addheaders = [
@@ -151,6 +164,9 @@ class TebeoSferaConnection(object):
 
         # Build search URL (for reference, though we'll use AJAX calls)
         search_url = "/buscador/{0}/".format(query_encoded)
+        
+        # Initialize initial_html to empty string as fallback
+        initial_html = ""
         
         from utils_compat import log
         
