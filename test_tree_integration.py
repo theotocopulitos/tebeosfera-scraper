@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
 
 from database.dbmodels import SeriesRef
 from database.tebeosfera.tbdb import TebeoSferaDB
-from database.tebeosfera.tbconnection import TebeoSferaConnection
 
 
 class MockConnection:
