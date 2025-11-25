@@ -14,7 +14,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src', 'py'))
 
 from database.tebeosfera.tbparser import TebeoSferaParser
-from database.tebeosfera.tbdb import TebeoSferaDB
 from database.dbmodels import SeriesRef
 
 
