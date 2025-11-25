@@ -15,6 +15,7 @@ import re
 import gzip
 import os
 import ssl
+import tempfile
 from utils_compat import sstr
 
 
@@ -360,7 +361,6 @@ class TebeoSferaConnection(object):
         
         # Save HTML for debugging if no numbers found
         try:
-            import tempfile
             debug_file = os.path.join(tempfile.gettempdir(), f'tebeosfera_collection_{collection_slug}.html')
             with open(debug_file, 'w', encoding='utf-8') as f:
                 f.write(initial_html)
