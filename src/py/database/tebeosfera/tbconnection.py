@@ -377,11 +377,6 @@ class TebeoSferaConnection(object):
         
         # Also try to find AJAX endpoint or script that loads numbers
         # Look for patterns like: ajax.loadNumbers(collection_id) or similar
-        ajax_patterns = [
-            r'ajax[^"\']*["\']([^"\']*numeros[^"\']*)["\']',
-            r'loadNumbers[^\(]*\([^\)]*["\']?(\d+)["\']?',
-            r'/neko/[^"\']*numeros[^"\']*',
-        ]
         
         # Try to extract collection name from page title for fallback
         title_match = re.search(r'<title>([^<]+)</title>', initial_html, re.IGNORECASE)
