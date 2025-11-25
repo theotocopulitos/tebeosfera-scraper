@@ -9,6 +9,7 @@ Standard fields reference: https://anansi-project.github.io/docs/comicinfo/schem
 @author: Comic Scraper Enhancement Project
 '''
 
+import re
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from utils_compat import sstr
@@ -161,7 +162,13 @@ class ComicInfoGenerator(object):
         self._add_element(root, 'SeriesGroup', comic_data.get('series_group'))
 
         # GTIN field (ISBN) - according to ComicInfo v2.1 schema
-        self._add_element(root, 'GTIN', comic_data.get('isbn'))
+        # Sanitize ISBN by removing non-digit characters and validate 13-digit ISBN-13
+        raw_isbn = comic_data.get('isbn')
+        if raw_isbn:
+            digits = re.sub(r'\D+', '', sstr(raw_isbn))
+            # Accept 13-digit ISBN only for GTIN; skip otherwise
+            if len(digits) == 13:
+                self._add_element(root, 'GTIN', digits)
         
         # Spanish-specific extensions (stored in Notes if not empty)
         spanish_notes = []

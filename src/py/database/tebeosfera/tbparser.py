@@ -754,8 +754,10 @@ class TebeoSferaParser(object):
                 if not href:
                     continue
 
-                # Use the relative href as deduplication key for consistency
-                key = href
+                # Normalize href to a canonical relative path (strip fragments/queries and lowercase)
+                norm_href = href.split('#', 1)[0].split('?', 1)[0].strip()
+                # Keep as relative; also normalize case for deduplication
+                key = norm_href.lower()
 
                 # Skip if already processed
                 if key in processed_keys:
