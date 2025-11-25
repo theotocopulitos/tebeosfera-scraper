@@ -161,6 +161,33 @@ def _configure_ctk_appearance():
     ctk.set_appearance_mode("light")  # "System", "Dark", "Light"
     ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
 
+def get_emoji_font(size=9, weight='normal'):
+    '''
+    Get a font that supports emojis.
+    On Windows, uses Segoe UI Emoji or Segoe UI.
+    On other platforms, uses system default.
+    '''
+    import platform
+    if platform.system() == 'Windows':
+        # Try Segoe UI Emoji first (best emoji support on Windows)
+        try:
+            # Test if font exists - only if tkinter is already initialized
+            import tkinter.font as tkfont
+            try:
+                fonts = tkfont.families()
+                if 'Segoe UI Emoji' in fonts:
+                    return ('Segoe UI Emoji', size, weight)
+                elif 'Segoe UI' in fonts:
+                    return ('Segoe UI', size, weight)
+            except:
+                # If tkinter not initialized yet, use Segoe UI as default on Windows
+                return ('Segoe UI', size, weight)
+        except:
+            # Fallback to Segoe UI on Windows
+            return ('Segoe UI', size, weight)
+    # Fallback to system default
+    return ('TkDefaultFont', size, weight)
+
 MAIN_PREVIEW_SIZE = (480, 720)   # Aspect ratio ~2:3
 SEARCH_PREVIEW_SIZE = (460, 690)
 
@@ -686,7 +713,7 @@ class TebeoSferaGUI(ctk.CTk):
         header_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
         
         tk.Label(header_frame, text="📚 Comics encontrados", 
-                font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(11, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(anchor=tk.W)
         
         # Subtle separator line
@@ -732,7 +759,7 @@ class TebeoSferaGUI(ctk.CTk):
         
         # Left side: title
         tk.Label(header, text="🖼️ Vista previa y metadatos", 
-                font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(11, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Right side: page navigation controls
@@ -797,7 +824,7 @@ class TebeoSferaGUI(ctk.CTk):
         metadata_header.pack(fill=tk.X, pady=(0, 8))
         
         tk.Label(metadata_header, text="📄 Metadatos del archivo", 
-                font=('Arial', 9, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(9, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         self.metadata_view_mode = tk.StringVar(value="pretty")  # "xml" or "pretty"
@@ -882,7 +909,7 @@ class TebeoSferaGUI(ctk.CTk):
         details_frame.pack(fill=tk.X, padx=15, pady=10)
         
         tk.Label(details_frame, text="📋", 
-                font=('Arial', 10, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(10, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(side=tk.LEFT, padx=(0, 5))
         
         self.details_label = tk.Label(details_frame, text="Selecciona un archivo para ver detalles",
@@ -1901,7 +1928,7 @@ class SearchDialog(ctk.CTkToplevel):
         results_header.pack(fill=tk.X, padx=15, pady=(15, 10))
         
         self.results_label = tk.Label(results_header, text="📚 Resultados de búsqueda", 
-                                     font=('Arial', 11, 'bold'),
+                                     font=get_emoji_font(11, 'bold'),
                                      bg=self.colors['card_bg'],
                                      fg=self.colors['text_dark'])
         self.results_label.pack(anchor=tk.W)
@@ -1970,7 +1997,7 @@ class SearchDialog(ctk.CTkToplevel):
         preview_header.pack(fill=tk.X, padx=15, pady=(15, 10))
         
         tk.Label(preview_header, text="🖼️ Vista previa y metadatos",
-                font=('Arial', 11, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(11, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(anchor=tk.W)
         
         tk.Frame(right_frame, height=1, bg=self.colors['border']).pack(fill=tk.X, padx=15, pady=(0, 10))
@@ -1989,7 +2016,7 @@ class SearchDialog(ctk.CTkToplevel):
         cover_label_frame.pack(fill=tk.X, pady=(0, 8))
         
         tk.Label(cover_label_frame, text="📷 Portada", 
-                font=('Arial', 9, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(9, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(anchor=tk.W)
         
         # Canvas para la imagen
@@ -2029,7 +2056,7 @@ class SearchDialog(ctk.CTkToplevel):
         metadata_header.pack(fill=tk.X, pady=(0, 8))
         
         tk.Label(metadata_header, text="📄 Metadatos", 
-                font=('Arial', 9, 'bold'), bg=self.colors['card_bg'],
+                font=get_emoji_font(9, 'bold'), bg=self.colors['card_bg'],
                 fg=self.colors['text_dark']).pack(side=tk.LEFT)
         
         # Toggle buttons for metadata view
