@@ -250,7 +250,7 @@ class TebeoSferaConnection(object):
                 try:
                     html_content = html_content.decode('utf-8')
                 except UnicodeDecodeError:
-                    html_content = html_content.decode('latin-1')
+                    html_content = html_content.decode('latin-1', errors='replace')
             
             # Validate response
             if html_content and html_content.strip() and not html_content.startswith('Error'):
