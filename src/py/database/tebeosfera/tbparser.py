@@ -652,9 +652,11 @@ class TebeoSferaParser(object):
                 for link in links:
                     href = link.get('href', '').strip()
                     if href:
+                        # Drop query and fragment for stable keys
+                        href = re.split(r'[?#]', href, 1)[0]
                         # Prefer links to /numeros/, /colecciones/, or /sagas/ over image links
                         if '/numeros/' in href or '/colecciones/' in href or '/sagas/' in href:
-                            key = href.strip()
+                            key = href
                             break
                 
                 # If no content link found, use first link
