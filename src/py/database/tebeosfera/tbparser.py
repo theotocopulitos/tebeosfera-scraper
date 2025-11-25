@@ -771,19 +771,24 @@ class TebeoSferaParser(object):
                 # Also check for other header containers as fallback
                 parent = link.parent
                 depth = 0
+                is_in_header = False
                 while parent and depth < 5:
                     parent_classes = parent.get('class', [])
                     if isinstance(parent_classes, list):
                         parent_classes_str = ' '.join(parent_classes).lower()
                     else:
                         parent_classes_str = str(parent_classes).lower()
-                    
+    
                     # Check for navbar-inner or other header containers
                     if 'navbar-inner' in parent_classes_str:
                         log.debug("  Skipping link in navbar-inner container: {0}".format(href[:100]))
-                        continue
+                        is_in_header = True
+                        break
                     parent = parent.parent
                     depth += 1
+
+                if is_in_header:
+                    continue
                 
                 match = re.search(r'/numeros/([^/]+)\.html', href)
                 if match:
