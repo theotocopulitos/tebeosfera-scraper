@@ -2628,71 +2628,57 @@ class SearchDialog(ctk.CTkToplevel):
                     print(f"[DEBUG GUI] Got item_id from selection: {item_id}")
                 else:
                     item_id = self.results_tree.focus()
-                    print(f"[DEBUG GUI] Got item_id from focus: {item_id}")
         except Exception as e:
-            print(f"[DEBUG GUI] Error getting item_id: {e}")
-            traceback.print_exc()
+            self._log(f"Error getting item_id: {e}")
             # Fallback: try to get from selection
             item_id = self.results_tree.focus()
-            print(f"[DEBUG GUI] Fallback: item_id from tree.focus(): {item_id}")
         
         if not item_id:
-            print(f"[DEBUG GUI] No item_id found, returning")
             return
-            
-        print(f"[DEBUG GUI] item_id: {item_id}, in tree_item_data: {item_id in self.tree_item_data}")
-        print(f"[DEBUG GUI] tree_item_data keys: {list(self.tree_item_data.keys())[:10]}...")
         
         if item_id not in self.tree_item_data:
-            print(f"[DEBUG GUI] item_id not in tree_item_data, returning")
             return
         
         item_type, item_obj = self.tree_item_data[item_id]
-        print(f"[DEBUG GUI] item_type: {item_type}, item_obj: {type(item_obj)}")
+        
+        # Check if already loading (prevent race condition from rapid double-clicks)
+        if hasattr(item_obj, '_loading') and item_obj._loading:
+            return
         
         # Ignore headers
         if item_type == 'header':
-            print(f"[DEBUG GUI] Ignoring header item")
             return
         
         # Only handle collections and sagas
         if item_type not in ('collection', 'saga'):
-            print(f"[DEBUG GUI] Ignoring item_type '{item_type}' (not collection or saga)")
             return
         
-        print(f"[DEBUG GUI] Processing expansion for {item_type}")
+        # Set loading flag to prevent concurrent loads
+        item_obj._loading = True
         
         # Check if already loaded (has real children, not just placeholder)
         children = self.results_tree.get_children(item_id)
-        print(f"[DEBUG GUI] Current children count: {len(children)}")
         
         # Check if children exist and if they are placeholders
         has_loading_placeholder = False
         if children:
-            # Check if any child is the "Cargando..." placeholder
-            # We can check by text content or by checking tree_item_data
             for child in children:
                 child_text = self.results_tree.item(child, 'text')
                 child_type = self.tree_item_data.get(child, (None, None))[0]
-                print(f"[DEBUG GUI] Child {child}: text='{child_text}', type={child_type}")
                 if child_text == "Cargando..." or child_type == 'loading':
                     has_loading_placeholder = True
-                    print(f"[DEBUG GUI] Found loading placeholder: {child}")
                     break
             
             # If we have children but none are loading placeholders, it's already loaded
             if not has_loading_placeholder and len(children) > 0:
-                print(f"[DEBUG GUI] Already loaded (has {len(children)} real children), returning")
+                item_obj._loading = False  # Clear loading flag
                 return  # Already loaded
         
         # Remove placeholder
-        print(f"[DEBUG GUI] Removing placeholder children...")
         for child in children:
             child_text = self.results_tree.item(child, 'text')
             child_type = self.tree_item_data.get(child, (None, None))[0]
-            print(f"[DEBUG GUI] Checking child {child}: text='{child_text}', type={child_type}")
             if child_text == "Cargando..." or child_type == 'loading':
-                print(f"[DEBUG GUI] Deleting loading placeholder: {child}")
                 self.results_tree.delete(child)
                 if child in self.tree_item_data:
                     del self.tree_item_data[child]
@@ -2700,31 +2686,23 @@ class SearchDialog(ctk.CTkToplevel):
         # Load children in background
         def load_children():
             try:
-                print(f"[DEBUG GUI] load_children called for item_id: {item_id}")
-                print(f"[DEBUG GUI] item_type: {item_type}, item_obj type: {type(item_obj)}")
-                
                 # Validate item_obj has required attributes
                 if not hasattr(item_obj, 'series_key'):
                     error_msg = f"item_obj missing series_key attribute. Type: {type(item_obj)}"
-                    # print(f"[DEBUG GUI] ERROR: {error_msg}")  # Removed for production
                     raise ValueError(error_msg)
                 
                 series_key = getattr(item_obj, 'series_key', None)
                 series_type = getattr(item_obj, 'type_s', 'collection')
                 series_name = getattr(item_obj, 'series_name_s', 'Unknown')
                 
-                # print(f"[DEBUG GUI] Series key: {series_key}, type: {series_type}, name: {series_name}")  # Removed for production
                 self._log(f"🔍 Cargando hijos de {series_type}: {series_name} (key: {series_key})")
                 
                 # Use query_series_children which returns both collections and issues
-                # print(f"[DEBUG GUI] Calling db.query_series_children...")  # Removed for production
                 children = self.db.query_series_children(item_obj)
-                # print(f"[DEBUG GUI] query_series_children returned: {type(children)}")  # Removed for production
                 
                 collections = children.get('collections', [])
                 issues = children.get('issues', [])
                 
-                # print(f"[DEBUG GUI] Found {len(collections)} collections and {len(issues)} issues")  # Removed for production
                 self._log(f"✅ Encontrados {len(collections)} colecciones y {len(issues)} issues")
                 
                 def update_tree():
@@ -2747,18 +2725,22 @@ class SearchDialog(ctk.CTkToplevel):
                     if not collections and not issues:
                         no_children_id = self.results_tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
                         self.tree_item_data[no_children_id] = ('empty', None)
+                    
+                    # Clear loading flag
+                    item_obj._loading = False
                 
                 self.after(0, update_tree)
             except Exception as e:
                 # Log error and show in tree
                 error_msg = str(e)
                 self._log(f"❌ Error cargando hijos: {error_msg}")
-                print(f"Error loading children: {error_msg}")
                 self._log(traceback.format_exc())
                 
                 def show_error():
                     error_id = self.results_tree.insert(item_id, 'end', text=f"Error: {error_msg[:50]}", tags=('empty',))
                     self.tree_item_data[error_id] = ('empty', None)
+                    # Clear loading flag on error too
+                    item_obj._loading = False
                 
                 self.after(0, show_error)
         
