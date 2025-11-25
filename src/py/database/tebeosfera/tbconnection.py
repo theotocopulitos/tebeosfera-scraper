@@ -265,7 +265,7 @@ class TebeoSferaConnection(object):
                 return None
                 
         except Exception as e:
-            log.debug("Error fetching {0} via AJAX: {1}".format(strategy['name'], sstr(e)))
+            log.debug("Error fetching {0} via AJAX: {1}".format(strategy_name, sstr(e)))
             return None
 
     def get_issue_page(self, issue_slug):
