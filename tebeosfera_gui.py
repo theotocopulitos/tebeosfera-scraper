@@ -2608,30 +2608,63 @@ class SearchDialog(ctk.CTkToplevel):
     
     def _on_tree_expand(self, event):
         '''Handle tree item expansion - load children (collections/issues) for sagas/collections'''
-        print(f"[DEBUG GUI] ===== _on_tree_expand CALLED =====")
-        print(f"[DEBUG GUI] Event type: {type(event)}")
-        print(f"[DEBUG GUI] Event: {event}")
-        
-        # Get the item that was expanded
-        # In Treeview, the event doesn't directly give us the item_id
-        # We need to get it from the tree's selection or focus
-        try:
-            # Try to get from event if available
-            if hasattr(event, 'item'):
-                item_id = event.item
-                print(f"[DEBUG GUI] Got item_id from event.item: {item_id}")
-            else:
-                # Get from tree selection or focus
-                selected = self.results_tree.selection()
-                if selected:
-                    item_id = selected[0]
-                    print(f"[DEBUG GUI] Got item_id from selection: {item_id}")
-                else:
-                    item_id = self.results_tree.focus()
-        except Exception as e:
-            self._log(f"Error getting item_id: {e}")
-            # Fallback: try to get from selection
-            item_id = self.results_tree.focus()
+        # Tk sets focus to the opened item for <<TreeviewOpen>>
+        tree = event.widget if hasattr(event, 'widget') else self.results_tree
+        item_id = tree.focus()
+        if not item_id or item_id not in self.tree_item_data:
+            return
+        item_type, item_obj = self.tree_item_data[item_id]
+        # Check loading flag to prevent concurrent loads
+        if hasattr(item_obj, '_loading') and item_obj._loading:
+            return
+        if item_type == 'header':
+            return
+        if item_type not in ('collection', 'saga'):
+            return
+        item_obj._loading = True
+        children = tree.get_children(item_id)
+        has_loading_placeholder = any(
+            tree.item(c, 'text') == "Cargando..." or self.tree_item_data.get(c, (None, None))[0] == 'loading'
+            for c in children
+        )
+        if children and not has_loading_placeholder:
+            item_obj._loading = False
+            return
+        for child in children:
+            if tree.item(child, 'text') == "Cargando..." or self.tree_item_data.get(child, (None, None))[0] == 'loading':
+                tree.delete(child)
+                self.tree_item_data.pop(child, None)
+        def load_children():
+            try:
+                if not hasattr(item_obj, 'series_key'):
+                    raise ValueError("item_obj missing series_key attribute")
+                children_data = self.db.query_series_children(item_obj)
+                collections = children_data.get('collections', [])
+                issues = children_data.get('issues', [])
+                def update_tree():
+                    for collection in collections:
+                        display_text = f"📚 {collection.series_name_s}"
+                        child_id = tree.insert(item_id, 'end', text=display_text, tags=('collection',))
+                        placeholder_id = tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
+                        self.tree_item_data[child_id] = ('collection', collection)
+                        self.tree_item_data[placeholder_id] = ('loading', None)
+                    for issue in issues:
+                        display_text = f"#{issue.issue_num_s} - {issue.title_s}"
+                        child_id = tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
+                        self.tree_item_data[child_id] = ('issue_item', issue)
+                    if not collections and not issues:
+                        empty_id = tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
+                        self.tree_item_data[empty_id] = ('empty', None)
+                    item_obj._loading = False
+                self.after(0, update_tree)
+            except Exception as e:
+                def show_error():
+                    err_id = tree.insert(item_id, 'end', text=f"Error: {str(e)[:50]}", tags=('empty',))
+                    self.tree_item_data[err_id] = ('empty', None)
+                    item_obj._loading = False
+                self.after(0, show_error)
+        t = threading.Thread(target=load_children, daemon=True)
+        t.start()
         
         if not item_id:
             return
