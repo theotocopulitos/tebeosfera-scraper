@@ -465,14 +465,28 @@ class TebeoSferaConnection(object):
                 return None
             
             numbers_html = response.read()
-            
-            # Early exit: empty response
+
+            # Decompress if server indicates gzip encoding
+            enc = (response.info().get('Content-Encoding') or '').lower()
+            if 'gzip' in enc:
+                try:
+                    numbers_html = gzip.decompress(numbers_html)
+                except Exception as de:
+                    log.debug("Failed to decompress gzip response: {0}".format(sstr(de)))
+                    return None
+
+            # Also handle raw gzip magic header as fallback
+            elif numbers_html.startswith(b'\x1f\x8b'):
+                try:
+                    numbers_html = gzip.decompress(numbers_html)
+                except Exception as de:
+                    log.debug("Failed to decompress raw gzip response: {0}".format(sstr(de)))
+                    return None
+
+            # Early exit: empty response after decompression
             if not numbers_html or len(numbers_html) < 10:
                 log.debug("Empty or too short response, skipping")
                 return None
-            
-            if numbers_html.startswith(b'\x1f\x8b'):
-                numbers_html = gzip.decompress(numbers_html)
             
             charset = self._get_charset(response)
             if charset:
