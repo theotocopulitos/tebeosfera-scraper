@@ -118,7 +118,6 @@ class TebeoSferaConnection(object):
             # Handle gzip encoding if present
             if response.info().get('Content-Encoding') == 'gzip':
                 import io
-                import gzip
                 buf = io.BytesIO(html_content)
                 f = gzip.GzipFile(fileobj=buf)
                 html_content = f.read()
@@ -388,9 +387,6 @@ class TebeoSferaConnection(object):
         # Method 1: Try to use collection ID if found
         if collection_id:
             try:
-                import urllib.parse
-                import gzip
-                
                 # Try different endpoints for collection-specific numbers
                 endpoints_to_try = [
                     {
@@ -450,9 +446,6 @@ class TebeoSferaConnection(object):
         
         # Method 2: Try searching for numbers with collection slug in URL pattern
         try:
-            import urllib.parse
-            import gzip
-            
             # Try using the collection slug directly in a different endpoint
             # Some sites use the slug in the AJAX call
             numbers_data = urllib.parse.urlencode({
