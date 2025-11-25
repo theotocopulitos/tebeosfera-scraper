@@ -2706,25 +2706,25 @@ class SearchDialog(ctk.CTkToplevel):
                 # Validate item_obj has required attributes
                 if not hasattr(item_obj, 'series_key'):
                     error_msg = f"item_obj missing series_key attribute. Type: {type(item_obj)}"
-                    print(f"[DEBUG GUI] ERROR: {error_msg}")
+                    # print(f"[DEBUG GUI] ERROR: {error_msg}")  # Removed for production
                     raise ValueError(error_msg)
                 
                 series_key = getattr(item_obj, 'series_key', None)
                 series_type = getattr(item_obj, 'type_s', 'collection')
                 series_name = getattr(item_obj, 'series_name_s', 'Unknown')
                 
-                print(f"[DEBUG GUI] Series key: {series_key}, type: {series_type}, name: {series_name}")
+                # print(f"[DEBUG GUI] Series key: {series_key}, type: {series_type}, name: {series_name}")  # Removed for production
                 self._log(f"🔍 Cargando hijos de {series_type}: {series_name} (key: {series_key})")
                 
                 # Use query_series_children which returns both collections and issues
-                print(f"[DEBUG GUI] Calling db.query_series_children...")
+                # print(f"[DEBUG GUI] Calling db.query_series_children...")  # Removed for production
                 children = self.db.query_series_children(item_obj)
-                print(f"[DEBUG GUI] query_series_children returned: {type(children)}")
+                # print(f"[DEBUG GUI] query_series_children returned: {type(children)}")  # Removed for production
                 
                 collections = children.get('collections', [])
                 issues = children.get('issues', [])
                 
-                print(f"[DEBUG GUI] Found {len(collections)} collections and {len(issues)} issues")
+                # print(f"[DEBUG GUI] Found {len(collections)} collections and {len(issues)} issues")  # Removed for production
                 self._log(f"✅ Encontrados {len(collections)} colecciones y {len(issues)} issues")
                 
                 def update_tree():
