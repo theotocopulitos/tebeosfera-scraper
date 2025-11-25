@@ -16,6 +16,7 @@ import gzip
 import os
 import ssl
 import tempfile
+import traceback
 from utils_compat import sstr
 
 
@@ -538,7 +539,6 @@ class TebeoSferaConnection(object):
                 # Maybe the numbers are in the initial HTML, or we need a different endpoint
         except Exception as e:
             print(f"[DEBUG] Fallback method failed: {sstr(e)}")
-            import traceback
             traceback.print_exc()
         
         print(f"[DEBUG] All methods failed, returning initial HTML only")
