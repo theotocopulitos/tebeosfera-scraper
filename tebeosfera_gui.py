@@ -23,6 +23,7 @@ import threading
 import queue
 import re
 import shutil
+import traceback
 import webbrowser
 from time import strftime
 
@@ -61,8 +62,13 @@ def set_toggle_button_colors(active_button, inactive_button):
     inactive_button.configure(fg_color=CTK_BUTTON_INACTIVE_COLOR)
 
 
-def build_series_url(series_key_or_path):
-    """Build absolute URL for a series."""
+def build_series_url(series_key_or_path, type_s='collection'):
+    """Build absolute URL for a series, collection, or saga.
+    
+    Args:
+        series_key_or_path: Series key/slug or full path
+        type_s: Type of series - 'saga', 'collection', or 'issue' (default: 'collection')
+    """
     if not series_key_or_path:
         return None
 
@@ -71,8 +77,23 @@ def build_series_url(series_key_or_path):
         return path
 
     if not path.startswith('/'):
-        # assume slug
-        path = f"/colecciones/{path}"
+        # Determine the correct path based on type
+        if type_s == 'saga':
+            path = f"/sagas/{path}"
+        elif type_s == 'issue':
+            # Issues should use build_issue_url, but handle it here for compatibility
+            path = f"/numeros/{path}"
+        else:
+            # Default to collection
+            path = f"/colecciones/{path}"
+    else:
+        # Path already starts with /, check if it needs type correction
+        if type_s == 'saga' and '/colecciones/' in path:
+            # Replace /colecciones/ with /sagas/ if it's a saga
+            path = path.replace('/colecciones/', '/sagas/')
+        elif type_s == 'collection' and '/sagas/' in path:
+            # Replace /sagas/ with /colecciones/ if it's a collection
+            path = path.replace('/sagas/', '/colecciones/')
 
     if not path.endswith('.html'):
         path = f"{path}.html"
@@ -1048,6 +1069,10 @@ class TebeoSferaGUI(ctk.CTk):
                 # Parse XML to dictionary
                 self.current_metadata_dict = self._parse_comicinfo_xml(metadata_xml)
                 
+                # Ensure default view is "pretty"
+                self.metadata_view_mode.set("pretty")
+                set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
+                
                 # Display in current mode
                 self._render_metadata_view()
                 
@@ -1099,7 +1124,12 @@ class TebeoSferaGUI(ctk.CTk):
         self.metadata_display.config(state=tk.NORMAL)
         self.metadata_display.delete('1.0', tk.END)
         
+        # Ensure mode is set to pretty if not explicitly set
         mode = self.metadata_view_mode.get()
+        if not mode or mode == "":
+            mode = "pretty"
+            self.metadata_view_mode.set("pretty")
+            set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
         
         if mode == "xml":
             # Show formatted XML
@@ -1117,51 +1147,177 @@ class TebeoSferaGUI(ctk.CTk):
         else:  # pretty mode
             # Show formatted key-value pairs
             if self.current_metadata_dict:
-                # Field mapping for better display
-                field_labels = {
-                    'Title': '📖 Título',
-                    'Series': '📚 Serie',
-                    'Number': '🔢 Número',
-                    'Count': '📊 Total',
-                    'Volume': '📙 Volumen',
-                    'Summary': '📝 Resumen',
-                    'Notes': '📋 Notas',
-                    'Publisher': '🏢 Editorial',
-                    'Imprint': '🏷️ Sello',
-                    'Genre': '🎭 Género',
-                    'Web': '🌐 Web',
-                    'PageCount': '📄 Páginas',
-                    'LanguageISO': '🌍 Idioma',
-                    'Format': '📐 Formato',
-                    'AgeRating': '🔞 Edad',
-                    'Writer': '✍️ Guionista',
-                    'Penciller': '🖊️ Dibujante',
-                    'Inker': '🖋️ Entintador',
-                    'Colorist': '🎨 Colorista',
-                    'Letterer': '✒️ Letrista',
-                    'CoverArtist': '🖼️ Portadista',
-                    'Editor': '📝 Editor',
-                    'Translator': '🔤 Traductor',
-                    'Year': '📅 Año',
-                    'Month': '📅 Mes',
-                    'Day': '📅 Día',
-                }
-                
-                output = []
-                for key, value in self.current_metadata_dict.items():
-                    label = field_labels.get(key, key)
-                    
-                    # Special handling for long fields
-                    if key in ['Summary', 'Notes']:
-                        output.append(f"\n{label}:\n{value}\n")
-                    else:
-                        output.append(f"{label}: {value}")
-                
-                self.metadata_display.insert('1.0', '\n'.join(output))
+                text = self._format_metadata_pretty(self.current_metadata_dict)
+                self.metadata_display.insert('1.0', text)
             else:
                 self.metadata_display.insert('1.0', "No se pudieron parsear los metadatos")
         
         self.metadata_display.config(state=tk.DISABLED)
+    
+    def _format_metadata_pretty(self, metadata):
+        '''Format metadata dictionary for beautiful display with all fields'''
+        if not metadata:
+            return "No hay metadatos disponibles"
+        
+        # Comprehensive field mapping with emojis and organized sections
+        field_labels = {
+            # Basic Info
+            'Title': '📖 Título',
+            'Series': '📚 Serie',
+            'Number': '🔢 Número',
+            'Count': '📊 Total números',
+            'Volume': '📙 Volumen',
+            'AlternateSeries': '🔄 Serie alterna',
+            'AlternateNumber': '🔄 Número alterno',
+            'AlternateCount': '🔄 Total alterno',
+            
+            # Story
+            'Summary': '📝 Resumen',
+            'Notes': '📋 Notas',
+            'StoryArc': '📖 Arco argumental',
+            'StoryArcNumber': '📖 Número de arco',
+            'SeriesGroup': '📚 Grupo de series',
+            
+            # Publishing
+            'Publisher': '🏢 Editorial',
+            'Imprint': '🏷️ Sello',
+            'Genre': '🎭 Género',
+            'Tags': '🏷️ Etiquetas',
+            'Web': '🌐 Web',
+            'PageCount': '📄 Páginas',
+            'LanguageISO': '🌍 Idioma',
+            'Format': '📐 Formato',
+            'AgeRating': '🔞 Clasificación',
+            'GTIN': '📘 GTIN (ISBN)',
+            'ISBN': '📘 ISBN',
+            'Binding': '📎 Encuadernación',
+            'Dimensions': '📏 Dimensiones',
+            'LegalDeposit': '📜 Depósito Legal',
+            'Price': '💰 Precio',
+            'OriginalTitle': '📖 Título Original',
+            'OriginalPublisher': '🏢 Editorial Original',
+            
+            # Dates
+            'Year': '📅 Año',
+            'Month': '📅 Mes',
+            'Day': '📅 Día',
+            
+            # People
+            'Writer': '✍️ Guionista',
+            'Penciller': '🖊️ Dibujante',
+            'Inker': '🖋️ Entintador',
+            'Colorist': '🎨 Colorista',
+            'Letterer': '✒️ Letrista',
+            'CoverArtist': '🖼️ Portadista',
+            'Editor': '📝 Editor',
+            'Translator': '🔤 Traductor',
+            
+            # Story elements
+            'Characters': '👤 Personajes',
+            'Teams': '👥 Equipos',
+            'Locations': '📍 Ubicaciones',
+            'MainCharacterOrTeam': '⭐ Personaje/Equipo principal',
+            
+            # Format details
+            'BlackAndWhite': '⚫ Blanco y negro',
+            'Manga': '🇯🇵 Manga',
+            'ScanInformation': '📷 Información de escaneo',
+            'Review': '⭐ Reseña',
+            'CommunityRating': '⭐ Valoración comunitaria',
+        }
+        
+        # Organize fields into sections
+        sections = {
+            'Información básica': ['Title', 'Series', 'Number', 'Count', 'Volume', 
+                                   'AlternateSeries', 'AlternateNumber', 'AlternateCount'],
+            'Historia': ['Summary', 'StoryArc', 'StoryArcNumber', 'SeriesGroup', 'Notes'],
+            'Publicación': ['Publisher', 'Imprint', 'Genre', 'Tags', 'Web', 'PageCount', 
+                           'LanguageISO', 'Format', 'AgeRating', 'GTIN', 'ISBN', 'Binding', 
+                           'Dimensions', 'LegalDeposit', 'Price', 'OriginalTitle', 'OriginalPublisher'],
+            'Fecha': ['Year', 'Month', 'Day'],
+            'Equipo creativo': ['Writer', 'Penciller', 'Inker', 'Colorist', 'Letterer', 
+                               'CoverArtist', 'Editor', 'Translator'],
+            'Elementos de la historia': ['Characters', 'Teams', 'Locations', 'MainCharacterOrTeam'],
+            'Detalles': ['BlackAndWhite', 'Manga', 'ScanInformation', 'Review', 'CommunityRating'],
+        }
+        
+        output = []
+        
+        # Process each section
+        for section_name, field_keys in sections.items():
+            section_fields = []
+            for key in field_keys:
+                if key in metadata and metadata[key] and str(metadata[key]).strip():
+                    value = str(metadata[key]).strip()
+                    if value and value not in ['-1', 'Unknown', '']:
+                        label = field_labels.get(key, key)
+                        section_fields.append((key, label, value))
+            
+            if section_fields:
+                # Beautiful section header with double underline
+                output.append("")
+                output.append(f"  {section_name.upper()}")
+                output.append("  " + "═" * 56)
+                output.append("")
+                
+                for key, label, value in section_fields:
+                    # Special formatting for long fields
+                    if key in ['Summary', 'Notes', 'Review']:
+                        output.append(f"  {label}")
+                        output.append("  " + "─" * 56)
+                        # Wrap long text with proper indentation
+                        words = value.split()
+                        line = ""
+                        for word in words:
+                            if len(line) + len(word) + 1 > 65:
+                                output.append(f"    {line}")
+                                line = word
+                            else:
+                                line = f"{line} {word}" if line else word
+                        if line:
+                            output.append(f"    {line}")
+                        output.append("")
+                    elif key in ['Characters', 'Teams', 'Locations', 'Writer', 'Penciller', 
+                                'Inker', 'Colorist', 'Letterer', 'CoverArtist', 'Editor', 'Translator']:
+                        # Format comma-separated lists nicely
+                        items = [item.strip() for item in value.split(',') if item.strip()]
+                        if items:
+                            output.append(f"  {label}")
+                            output.append("  " + "─" * 56)
+                            for item in items:
+                                output.append(f"    • {item}")
+                            output.append("")
+                    else:
+                        # Regular field with nice formatting
+                        output.append(f"  {label:<25} {value}")
+        
+        # Add any remaining fields not in sections
+        processed_keys = set()
+        for section_fields in sections.values():
+            processed_keys.update(section_fields)
+        
+        remaining = []
+        for key, value in metadata.items():
+            # Skip internal keys (those starting with underscore)
+            if key.startswith('_'):
+                continue
+            if key not in processed_keys and value and str(value).strip() and str(value).strip() not in ['-1', 'Unknown', '']:
+                label = field_labels.get(key, key)
+                remaining.append((label, value))
+        
+        if remaining:
+            output.append("")
+            output.append("  OTROS")
+            output.append("  " + "═" * 56)
+            output.append("")
+            for label, value in remaining:
+                output.append(f"  {label:<25} {value}")
+        
+        # Remove leading empty line
+        if output and output[0] == "":
+            output.pop(0)
+        
+        return '\n'.join(output) if output else "No hay metadatos disponibles"
     
     def _extract_comicinfo(self, filepath):
         '''Extract ComicInfo.xml from CBZ/CBR file'''
@@ -1758,7 +1914,21 @@ class SearchDialog(ctk.CTkToplevel):
         self.results_tree.bind('<Double-Button-1>', self._on_tree_double_click)
         # Bind expansion event to load issues
         self.results_tree.bind('<<TreeviewOpen>>', self._on_tree_expand)
-
+        print("[DEBUG GUI] Tree expansion event bound to _on_tree_expand")
+        
+        # Also try binding to Button-1 on the expand/collapse icon area
+        # This is a workaround if <<TreeviewOpen>> doesn't fire
+        def on_tree_click(event):
+            region = self.results_tree.identify_region(event.x, event.y)
+            if region == 'tree':
+                item_id = self.results_tree.identify_row(event.y)
+                if item_id:
+                    children = self.results_tree.get_children(item_id)
+                    if children:
+                        # Check if it's being expanded (has children but they might be hidden)
+                        # Try to trigger expansion manually
+                        print(f"[DEBUG GUI] Click on tree item {item_id}, has {len(children)} children")
+        self.results_tree.bind('<Button-1>', on_tree_click)
         scrollbar.config(command=self.results_tree.yview)
         
         # Store tree item data: {item_id: (type, object)}
@@ -1999,10 +2169,10 @@ class SearchDialog(ctk.CTkToplevel):
             url = build_issue_url(series_key)
             tipo = "ejemplar"
         elif result_type == 'saga':
-            url = build_series_url(series_key)
+            url = build_series_url(series_key, type_s='saga')
             tipo = "saga"
         else:
-            url = build_series_url(series_key)
+            url = build_series_url(series_key, type_s='collection')
             tipo = "colección"
 
         if url:
@@ -2209,8 +2379,9 @@ class SearchDialog(ctk.CTkToplevel):
                                 display_name = result.series_name_s
                                 item_id = self.results_tree.insert(sagas_parent, 'end', text=display_name, tags=('saga',))
                                 # Add placeholder child to enable expansion
-                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                                 self.tree_item_data[item_id] = ('saga', result)
+                                self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                         
                         # Insert collections
                         if collections:
@@ -2220,8 +2391,9 @@ class SearchDialog(ctk.CTkToplevel):
                                 display_name = result.series_name_s
                                 item_id = self.results_tree.insert(collections_parent, 'end', text=display_name, tags=('collection',))
                                 # Add placeholder child to enable expansion
-                                self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                                placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                                 self.tree_item_data[item_id] = ('collection', result)
+                                self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                         
                         # Insert issues
                         if issues:
@@ -2329,8 +2501,9 @@ class SearchDialog(ctk.CTkToplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(sagas_parent, 'end', text=display_text, tags=('saga',))
-                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('saga', result)
+                            self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
                                 best_score = score
@@ -2344,8 +2517,9 @@ class SearchDialog(ctk.CTkToplevel):
                             prefix = "⭐ " if i == self.best_match_index and score > 60 else ""
                             display_text = f"{prefix}{result.series_name_s} ({score:.0f}%)"
                             item_id = self.results_tree.insert(collections_parent, 'end', text=display_text, tags=('collection',))
-                            self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
+                            placeholder_id = self.results_tree.insert(item_id, 'end', text="Cargando...", tags=('loading',))
                             self.tree_item_data[item_id] = ('collection', result)
+                            self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
                             if i == self.best_match_index and score > 60:
                                 best_item_id = item_id
                                 best_score = score
@@ -2441,12 +2615,76 @@ class SearchDialog(ctk.CTkToplevel):
         # Collections and sagas expand on double-click (handled by tree expansion)
     
     def _on_tree_expand(self, event):
-        '''Handle tree item expansion - load issues for collections/sagas'''
-        item_id = self.results_tree.focus()
+        '''Handle tree item expansion - load children (collections/issues) for sagas/collections'''
+        # Tk sets focus to the opened item for <<TreeviewOpen>>
+        tree = event.widget if hasattr(event, 'widget') else self.results_tree
+        item_id = tree.focus()
         if not item_id or item_id not in self.tree_item_data:
+            return
+        item_type, item_obj = self.tree_item_data[item_id]
+        # Check loading flag to prevent concurrent loads
+        if hasattr(item_obj, '_loading') and item_obj._loading:
+            return
+        if item_type == 'header':
+            return
+        if item_type not in ('collection', 'saga'):
+            return
+        item_obj._loading = True
+        children = tree.get_children(item_id)
+        has_loading_placeholder = any(
+            tree.item(c, 'text') == "Cargando..." or self.tree_item_data.get(c, (None, None))[0] == 'loading'
+            for c in children
+        )
+        if children and not has_loading_placeholder:
+            item_obj._loading = False
+            return
+        for child in children:
+            if tree.item(child, 'text') == "Cargando..." or self.tree_item_data.get(child, (None, None))[0] == 'loading':
+                tree.delete(child)
+                self.tree_item_data.pop(child, None)
+        def load_children():
+            try:
+                if not hasattr(item_obj, 'series_key'):
+                    raise ValueError("item_obj missing series_key attribute")
+                children_data = self.db.query_series_children(item_obj)
+                collections = children_data.get('collections', [])
+                issues = children_data.get('issues', [])
+                def update_tree():
+                    for collection in collections:
+                        display_text = f"📚 {collection.series_name_s}"
+                        child_id = tree.insert(item_id, 'end', text=display_text, tags=('collection',))
+                        placeholder_id = tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
+                        self.tree_item_data[child_id] = ('collection', collection)
+                        self.tree_item_data[placeholder_id] = ('loading', None)
+                    for issue in issues:
+                        display_text = f"#{issue.issue_num_s} - {issue.title_s}"
+                        child_id = tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
+                        self.tree_item_data[child_id] = ('issue_item', issue)
+                    if not collections and not issues:
+                        empty_id = tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
+                        self.tree_item_data[empty_id] = ('empty', None)
+                    item_obj._loading = False
+                self.after(0, update_tree)
+            except Exception as e:
+                def show_error():
+                    err_id = tree.insert(item_id, 'end', text=f"Error: {str(e)[:50]}", tags=('empty',))
+                    self.tree_item_data[err_id] = ('empty', None)
+                    item_obj._loading = False
+                self.after(0, show_error)
+        t = threading.Thread(target=load_children, daemon=True)
+        t.start()
+        
+        if not item_id:
+            return
+        
+        if item_id not in self.tree_item_data:
             return
         
         item_type, item_obj = self.tree_item_data[item_id]
+        
+        # Check if already loading (prevent race condition from rapid double-clicks)
+        if hasattr(item_obj, '_loading') and item_obj._loading:
+            return
         
         # Ignore headers
         if item_type == 'header':
@@ -2456,36 +2694,98 @@ class SearchDialog(ctk.CTkToplevel):
         if item_type not in ('collection', 'saga'):
             return
         
+        # Set loading flag to prevent concurrent loads
+        item_obj._loading = True
+        
         # Check if already loaded (has real children, not just placeholder)
         children = self.results_tree.get_children(item_id)
-        if children and self.tree_item_data.get(children[0], (None, None))[0] != 'loading':
-            return  # Already loaded
+        
+        # Check if children exist and if they are placeholders
+        has_loading_placeholder = False
+        if children:
+            for child in children:
+                child_text = self.results_tree.item(child, 'text')
+                child_type = self.tree_item_data.get(child, (None, None))[0]
+                if child_text == "Cargando..." or child_type == 'loading':
+                    has_loading_placeholder = True
+                    break
+            
+            # If we have children but none are loading placeholders, it's already loaded
+            if not has_loading_placeholder and len(children) > 0:
+                item_obj._loading = False  # Clear loading flag
+                return  # Already loaded
         
         # Remove placeholder
         for child in children:
-            if self.tree_item_data.get(child, (None, None))[0] == 'loading':
+            child_text = self.results_tree.item(child, 'text')
+            child_type = self.tree_item_data.get(child, (None, None))[0]
+            if child_text == "Cargando..." or child_type == 'loading':
                 self.results_tree.delete(child)
                 if child in self.tree_item_data:
                     del self.tree_item_data[child]
         
-        # Load issues in background
-        def load_issues():
-            issues = self.db.query_series_issues(item_obj)
-            
-            def update_tree():
-                # Add issues as children
-                for issue in issues:
-                    display_text = f"#{issue.issue_num_s} - {issue.title_s}"
-                    child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
-                    self.tree_item_data[child_id] = ('issue_item', issue)
+        # Load children in background
+        def load_children():
+            try:
+                # Validate item_obj has required attributes
+                if not hasattr(item_obj, 'series_key'):
+                    error_msg = f"item_obj missing series_key attribute. Type: {type(item_obj)}"
+                    raise ValueError(error_msg)
                 
-                if not issues:
-                    no_issues_id = self.results_tree.insert(item_id, 'end', text="Sin issues", tags=('empty',))
-                    self.tree_item_data[no_issues_id] = ('empty', None)
-            
-            self.after(0, update_tree)
+                series_key = getattr(item_obj, 'series_key', None)
+                series_type = getattr(item_obj, 'type_s', 'collection')
+                series_name = getattr(item_obj, 'series_name_s', 'Unknown')
+                
+                self._log(f"🔍 Cargando hijos de {series_type}: {series_name} (key: {series_key})")
+                
+                # Use query_series_children which returns both collections and issues
+                children = self.db.query_series_children(item_obj)
+                
+                collections = children.get('collections', [])
+                issues = children.get('issues', [])
+                
+                self._log(f"✅ Encontrados {len(collections)} colecciones y {len(issues)} issues")
+                
+                def update_tree():
+                    # Add collections first (for sagas)
+                    for collection in collections:
+                        display_text = f"📚 {collection.series_name_s}"
+                        child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('collection',))
+                        # Add placeholder to enable expansion
+                        placeholder_id = self.results_tree.insert(child_id, 'end', text="Cargando...", tags=('loading',))
+                        self.tree_item_data[child_id] = ('collection', collection)
+                        self.tree_item_data[placeholder_id] = ('loading', None)  # Store placeholder
+                    
+                    # Add issues
+                    for issue in issues:
+                        display_text = f"#{issue.issue_num_s} - {issue.title_s}"
+                        child_id = self.results_tree.insert(item_id, 'end', text=display_text, tags=('issue_item',))
+                        self.tree_item_data[child_id] = ('issue_item', issue)
+                    
+                    # If no children found, show message
+                    if not collections and not issues:
+                        no_children_id = self.results_tree.insert(item_id, 'end', text="Sin contenido", tags=('empty',))
+                        self.tree_item_data[no_children_id] = ('empty', None)
+                    
+                    # Clear loading flag
+                    item_obj._loading = False
+                
+                self.after(0, update_tree)
+            except Exception as e:
+                # Log error and show in tree
+                error_msg = str(e)
+                self._log(f"❌ Error cargando hijos: {error_msg}")
+                self._log(traceback.format_exc())
+                
+                def show_error():
+                    error_id = self.results_tree.insert(item_id, 'end', text=f"Error: {error_msg[:50]}", tags=('empty',))
+                    self.tree_item_data[error_id] = ('empty', None)
+                    # Clear loading flag on error too
+                    item_obj._loading = False
+                
+                self.after(0, show_error)
         
-        thread = threading.Thread(target=load_issues)
+        thread = threading.Thread(target=load_children)
         thread.daemon = True
         thread.start()
 
@@ -2666,18 +2966,31 @@ class SearchDialog(ctk.CTkToplevel):
                     # Convert to metadata dict (similar to main GUI)
                     metadata_dict = self._issue_to_metadata_dict(issue)
                     
-                    # Generate XML
+                    # Generate XML (use lowercase version for XML generation)
                     from comicinfo_xml import ComicInfoGenerator
                     xml_generator = ComicInfoGenerator()
-                    xml_content = xml_generator.generate_xml(metadata_dict)
+                    xml_dict = metadata_dict.get('_xml_dict', {k.lower(): v for k, v in metadata_dict.items() if not k.startswith('_')})
+                    xml_content = xml_generator.generate_xml(xml_dict)
                     
                     # Store for toggling
                     self.current_metadata_xml = xml_content
                     self.current_metadata_dict = metadata_dict
                     self.current_issue = issue
                     
-                    # Display based on current view mode
-                    self._toggle_metadata_view()
+                    # Display in pretty mode by default
+                    self.metadata_view_mode.set('pretty')
+                    set_toggle_button_colors(self.metadata_pretty_button, self.metadata_xml_button)
+                    
+                    # Show formatted metadata directly using parent's method for consistency
+                    self.metadata_display.config(state=tk.NORMAL)
+                    self.metadata_display.delete('1.0', tk.END)
+                    # Always use parent's _format_metadata_pretty to ensure exact same format
+                    if hasattr(self.parent, '_format_metadata_pretty'):
+                        text = self.parent._format_metadata_pretty(self.current_metadata_dict)
+                    else:
+                        text = self._format_metadata_pretty(self.current_metadata_dict)
+                    self.metadata_display.insert('1.0', text)
+                    self.metadata_display.config(state=tk.DISABLED)
                     
                     # Enable apply button
                     self.apply_xml_button.configure(state=tk.NORMAL)
@@ -2695,8 +3008,45 @@ class SearchDialog(ctk.CTkToplevel):
         thread.start()
     
     def _issue_to_metadata_dict(self, issue):
-        '''Convert Issue object to metadata dictionary (same as main GUI)'''
+        '''Convert Issue object to metadata dictionary with XML field names (Title, Series, etc.)'''
+        # Convert to XML field names (Title, Series, etc.) for compatibility with _format_metadata_pretty
         metadata = {
+            'Title': issue.title_s,
+            'Series': issue.series_name_s,
+            'Number': issue.issue_num_s,
+            'Count': issue.issue_count_n if issue.issue_count_n > 0 else None,
+            'Volume': issue.volume_year_n if issue.volume_year_n > 0 else None,
+            'Summary': issue.summary_s,
+            'Publisher': issue.publisher_s,
+            'Year': issue.pub_year_n if issue.pub_year_n > 0 else None,
+            'Month': issue.pub_month_n if issue.pub_month_n > 0 else None,
+            'Day': issue.pub_day_n if issue.pub_day_n > 0 else None,
+            'Writer': issue.writers_sl,
+            'Penciller': issue.pencillers_sl,
+            'Inker': issue.inkers_sl,
+            'Colorist': issue.colorists_sl,
+            'Letterer': issue.letterers_sl,
+            'CoverArtist': issue.cover_artists_sl,
+            'Editor': issue.editors_sl,
+            'Translator': issue.translators_sl,
+            'Genre': ', '.join(issue.crossovers_sl) if issue.crossovers_sl else None,
+            'Characters': ', '.join(issue.characters_sl) if issue.characters_sl else None,
+            'PageCount': issue.page_count_n if issue.page_count_n > 0 else None,
+            'LanguageISO': 'es',
+            'Format': issue.format_s,
+            'GTIN': issue.isbn_s,  # Use GTIN instead of isbn
+            'Web': issue.webpage_s,
+            # Spanish-specific extensions
+            'Binding': issue.binding_s,
+            'Dimensions': issue.dimensions_s,
+            'ISBN': issue.isbn_s,  # Also include ISBN for display (GTIN is used in XML)
+            'LegalDeposit': issue.legal_deposit_s,
+            'Price': issue.price_s,
+            'OriginalTitle': issue.origin_title_s,
+            'OriginalPublisher': issue.origin_publisher_s
+        }
+        # Also create lowercase version for XML generation (ComicInfoGenerator expects lowercase)
+        metadata_lower = {
             'title': issue.title_s,
             'series': issue.series_name_s,
             'number': issue.issue_num_s,
@@ -2729,6 +3079,8 @@ class SearchDialog(ctk.CTkToplevel):
             'original_publisher': issue.origin_publisher_s,
             'web': issue.webpage_s
         }
+        # Store both versions - use uppercase for display, lowercase for XML generation
+        metadata['_xml_dict'] = metadata_lower
         return metadata
     
     def _toggle_metadata_view(self):
@@ -2738,6 +3090,9 @@ class SearchDialog(ctk.CTkToplevel):
         
         # Toggle the mode
         current = self.metadata_view_mode.get()
+        # Default to pretty if not set
+        if not current or current == "":
+            current = 'pretty'
         new_mode = 'xml' if current == 'pretty' else 'pretty'
         self.metadata_view_mode.set(new_mode)
         
@@ -2752,8 +3107,11 @@ class SearchDialog(ctk.CTkToplevel):
         self.metadata_display.delete('1.0', tk.END)
         
         if new_mode == 'pretty':
-            # Show formatted metadata
-            text = self._format_metadata_pretty(self.current_metadata_dict)
+            # Show formatted metadata using parent's method for consistency
+            if hasattr(self.parent, '_format_metadata_pretty'):
+                text = self.parent._format_metadata_pretty(self.current_metadata_dict)
+            else:
+                text = self._format_metadata_pretty(self.current_metadata_dict)
             self.metadata_display.insert('1.0', text)
         else:
             # Show XML
@@ -2765,48 +3123,13 @@ class SearchDialog(ctk.CTkToplevel):
         self.metadata_display.config(state=tk.DISABLED)
     
     def _format_metadata_pretty(self, metadata):
-        '''Format metadata dictionary for pretty display (same as main GUI)'''
-        # Use parent's method if available
+        '''Format metadata dictionary for pretty display - ALWAYS use parent's method for consistency'''
+        # Always use parent's method to ensure exact same format as main GUI
         if hasattr(self.parent, '_format_metadata_pretty'):
             return self.parent._format_metadata_pretty(metadata)
         
-        # Fallback implementation
-        lines = []
-        if metadata.get('title'):
-            lines.append(f"Título: {metadata['title']}")
-        if metadata.get('series'):
-            lines.append(f"Serie: {metadata['series']}")
-        if metadata.get('number'):
-            lines.append(f"Número: {metadata['number']}")
-        if metadata.get('count'):
-            lines.append(f"Total números: {metadata['count']}")
-        if metadata.get('volume'):
-            lines.append(f"Volumen: {metadata['volume']}")
-        if metadata.get('publisher'):
-            lines.append(f"Editorial: {metadata['publisher']}")
-        if metadata.get('year'):
-            date_parts = []
-            if metadata.get('day'):
-                date_parts.append(str(metadata['day']))
-            if metadata.get('month'):
-                date_parts.append(str(metadata['month']))
-            date_parts.append(str(metadata['year']))
-            lines.append(f"Fecha: {'/'.join(date_parts)}")
-        if metadata.get('summary'):
-            lines.append(f"\nResumen:\n{metadata['summary']}")
-        if metadata.get('writer'):
-            lines.append(f"\nGuionista: {metadata['writer']}")
-        if metadata.get('penciller'):
-            lines.append(f"Dibujante: {metadata['penciller']}")
-        if metadata.get('inker'):
-            lines.append(f"Entintador: {metadata['inker']}")
-        if metadata.get('colorist'):
-            lines.append(f"Colorista: {metadata['colorist']}")
-        if metadata.get('cover_artist'):
-            lines.append(f"Portadista: {metadata['cover_artist']}")
-        if metadata.get('web'):
-            lines.append(f"\nWeb: {metadata['web']}")
-        return '\n'.join(lines) if lines else 'Sin metadatos disponibles'
+        # This should never happen, but provide a basic fallback
+        return "Error: No se puede formatear los metadatos (método del parent no disponible)"
     
     def _apply_comicinfo_xml(self):
         '''Apply ComicInfo.xml to the comic file'''
@@ -3089,49 +3412,6 @@ class SearchDialog(ctk.CTkToplevel):
         thread = threading.Thread(target=query_details)
         thread.daemon = True
         thread.start()
-
-    def _issue_to_metadata_dict(self, issue):
-        '''Convert Issue object to metadata dictionary'''
-        # Debug: log summary content
-        if issue.summary_s:
-            self._log(f"[OK] Summary presente en Issue: {len(issue.summary_s)} chars - {issue.summary_s[:50]}...")
-        else:
-            self._log("[WARN] Summary vacio en Issue")
-        
-        metadata = {
-            'title': issue.title_s,
-            'series': issue.series_name_s,
-            'number': issue.issue_num_s,
-            'count': issue.issue_count_n if issue.issue_count_n > 0 else None,
-            'volume': issue.volume_year_n if issue.volume_year_n > 0 else None,
-            'summary': issue.summary_s,
-            'publisher': issue.publisher_s,
-            'year': issue.pub_year_n if issue.pub_year_n > 0 else None,
-            'month': issue.pub_month_n if issue.pub_month_n > 0 else None,
-            'day': issue.pub_day_n if issue.pub_day_n > 0 else None,
-            'writer': issue.writers_sl,
-            'penciller': issue.pencillers_sl,
-            'inker': issue.inkers_sl,
-            'colorist': issue.colorists_sl,
-            'letterer': issue.letterers_sl,
-            'cover_artist': issue.cover_artists_sl,
-            'editor': issue.editors_sl,
-            'translator': issue.translators_sl,
-            'genre': ', '.join(issue.crossovers_sl) if issue.crossovers_sl else None,  # Genres stored in crossovers
-            'characters': ', '.join(issue.characters_sl) if issue.characters_sl else None,
-            'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
-            'language_iso': 'es',  # Default Spanish
-            'format': issue.format_s,
-            'binding': issue.binding_s,
-            'dimensions': issue.dimensions_s,
-            'isbn': issue.isbn_s,
-            'legal_deposit': issue.legal_deposit_s,
-            'price': issue.price_s,
-            'original_title': issue.origin_title_s,
-            'original_publisher': issue.origin_publisher_s,
-            'web': issue.webpage_s  # Changed from 'webpage' to 'web'
-        }
-        return metadata
 
 
 class BatchSearchDialog(SearchDialog):

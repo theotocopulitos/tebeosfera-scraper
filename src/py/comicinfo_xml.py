@@ -160,10 +160,11 @@ class ComicInfoGenerator(object):
         self._add_element(root, 'StoryArc', comic_data.get('story_arc'))
         self._add_element(root, 'SeriesGroup', comic_data.get('series_group'))
 
+        # GTIN field (ISBN) - according to ComicInfo v2.1 schema
+        self._add_element(root, 'GTIN', comic_data.get('isbn'))
+        
         # Spanish-specific extensions (stored in Notes if not empty)
         spanish_notes = []
-        if comic_data.get('isbn'):
-            spanish_notes.append(f"ISBN: {comic_data.get('isbn')}")
         if comic_data.get('legal_deposit'):
             spanish_notes.append(f"Depósito Legal: {comic_data.get('legal_deposit')}")
         if comic_data.get('price'):
