@@ -1189,6 +1189,13 @@ class TebeoSferaGUI(ctk.CTk):
             'Format': '📐 Formato',
             'AgeRating': '🔞 Clasificación',
             'GTIN': '📘 GTIN (ISBN)',
+            'ISBN': '📘 ISBN',
+            'Binding': '📎 Encuadernación',
+            'Dimensions': '📏 Dimensiones',
+            'LegalDeposit': '📜 Depósito Legal',
+            'Price': '💰 Precio',
+            'OriginalTitle': '📖 Título Original',
+            'OriginalPublisher': '🏢 Editorial Original',
             
             # Dates
             'Year': '📅 Año',
@@ -1225,7 +1232,8 @@ class TebeoSferaGUI(ctk.CTk):
                                    'AlternateSeries', 'AlternateNumber', 'AlternateCount'],
             'Historia': ['Summary', 'StoryArc', 'StoryArcNumber', 'SeriesGroup', 'Notes'],
             'Publicación': ['Publisher', 'Imprint', 'Genre', 'Tags', 'Web', 'PageCount', 
-                           'LanguageISO', 'Format', 'AgeRating', 'GTIN'],
+                           'LanguageISO', 'Format', 'AgeRating', 'GTIN', 'ISBN', 'Binding', 
+                           'Dimensions', 'LegalDeposit', 'Price', 'OriginalTitle', 'OriginalPublisher'],
             'Fecha': ['Year', 'Month', 'Day'],
             'Equipo creativo': ['Writer', 'Penciller', 'Inker', 'Colorist', 'Letterer', 
                                'CoverArtist', 'Editor', 'Translator'],
@@ -3027,7 +3035,15 @@ class SearchDialog(ctk.CTkToplevel):
             'LanguageISO': 'es',
             'Format': issue.format_s,
             'GTIN': issue.isbn_s,  # Use GTIN instead of isbn
-            'Web': issue.webpage_s
+            'Web': issue.webpage_s,
+            # Spanish-specific extensions
+            'Binding': issue.binding_s,
+            'Dimensions': issue.dimensions_s,
+            'ISBN': issue.isbn_s,  # Also include ISBN for display (GTIN is used in XML)
+            'LegalDeposit': issue.legal_deposit_s,
+            'Price': issue.price_s,
+            'OriginalTitle': issue.origin_title_s,
+            'OriginalPublisher': issue.origin_publisher_s
         }
         # Also create lowercase version for XML generation (ComicInfoGenerator expects lowercase)
         metadata_lower = {
