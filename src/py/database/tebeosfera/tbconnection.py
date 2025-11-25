@@ -515,7 +515,7 @@ class TebeoSferaConnection(object):
             else:
                 try:
                     numbers_html = numbers_html.decode('utf-8')
-                except:
+                except UnicodeDecodeError:
                     numbers_html = numbers_html.decode('latin-1')
             
             print(f"[DEBUG] Fallback response: {len(numbers_html)} bytes")
