@@ -667,9 +667,9 @@ class TebeoSferaParser(object):
                     text_snippet = self._clean_text(next_result.get_text()).strip()[:200]
                     key = f"{classes}|{text_snippet}"
                 
-                # Normalize key (make absolute URL if relative)
-                if key and not key.startswith('http') and key.startswith('/'):
-                    key = 'https://www.tebeosfera.com' + key
+                # Use the relative URL as the key directly for duplicate detection (no need to normalize to absolute)
+                # if key and not key.startswith('http') and key.startswith('/'):
+                #     key = 'https://www.tebeosfera.com' + key
 
                 if key in processed_keys:
                    log.debug("  Skipping duplicate: {0}".format(key[:100]))
