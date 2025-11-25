@@ -458,9 +458,9 @@ class TebeoSferaConnection(object):
             self._enforce_rate_limit()
             response = self.__session_opener.open(request, timeout=TebeoSferaConnection.TIMEOUT_SECS)
             
-            # Early exit: check content type
-            content_type = response.info().get('Content-Type', '')
-            if 'text/html' not in content_type and 'application/json' not in content_type:
+            # Early exit: check content type more flexibly
+            content_type = (response.info().get('Content-Type') or '').lower()
+            if not any(token in content_type for token in ('html', 'application/json', 'text/plain')):
                 log.debug("Unexpected content type: {0}, skipping".format(content_type))
                 return None
             
