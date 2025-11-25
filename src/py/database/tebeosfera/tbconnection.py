@@ -439,6 +439,9 @@ class TebeoSferaConnection(object):
         Try a single AJAX endpoint and return the result if successful.
         
         Returns: HTML content if successful, None otherwise
+        
+        Note: For name_search endpoint, results are filtered by collection_slug to avoid
+        returning issues from unrelated collections with similar names.
         '''
         from utils_compat import log
         
@@ -491,13 +494,103 @@ class TebeoSferaConnection(object):
                 return None
             
             if numbers_html and ('linea_resultados' in numbers_html or '/numeros/' in numbers_html):
-                log.debug("Endpoint {0} succeeded!".format(endpoint['name']))
-                return numbers_html
+                # For name_search endpoint, filter results to only include issues
+                # that belong to this specific collection (to avoid showing unrelated results)
+                if endpoint['name'] == 'name_search' and collection_slug:
+                    filtered_html = self._filter_results_by_collection(numbers_html, collection_slug)
+                    if filtered_html:
+                        log.debug("Endpoint {0} succeeded after filtering!".format(endpoint['name']))
+                        return filtered_html
+                    else:
+                        log.debug("No matching results after filtering by collection slug")
+                        return None
+                else:
+                    log.debug("Endpoint {0} succeeded!".format(endpoint['name']))
+                    return numbers_html
                 
         except Exception as e:
             log.debug("Endpoint {0} failed: {1}".format(endpoint['name'], sstr(e)))
         
         return None
+    
+    def _filter_results_by_collection(self, html_content, collection_slug):
+        '''
+        Filter search results to only include entries that match the collection slug.
+        
+        This prevents name-based searches from returning issues from unrelated collections
+        that happen to have similar names.
+        
+        Args:
+            html_content: HTML with search results
+            collection_slug: The slug to filter by (e.g., "gaston_elgafe_2015_norma")
+            
+        Returns: Filtered HTML or None if no matches found
+        '''
+        from utils_compat import log
+        
+        if not collection_slug:
+            return html_content
+        
+        # Build pattern to match URLs that contain this collection slug
+        # Collection slugs appear in URLs like /numeros/gaston_elgafe_2015_norma_1.html
+        slug_pattern = collection_slug.lower().replace(' ', '_')
+        
+        # Parse the HTML and filter results
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find all result rows
+            result_rows = soup.find_all('div', class_='linea_resultados')
+            
+            if not result_rows:
+                # Try finding individual links
+                links = soup.find_all('a', href=re.compile(r'/numeros/'))
+                if not links:
+                    return html_content  # No results to filter
+                
+                # Filter links by collection slug
+                matching_links = []
+                for link in links:
+                    href = link.get('href', '').lower()
+                    if slug_pattern in href:
+                        matching_links.append(link)
+                
+                if not matching_links:
+                    log.debug("No links matching slug pattern: {0}".format(slug_pattern))
+                    return None
+                
+                log.debug("Filtered {0} links down to {1} matching collection slug".format(
+                    len(links), len(matching_links)))
+                return html_content  # Return full content if we have any matches
+            
+            # Filter result rows by collection slug
+            matching_rows = []
+            for row in result_rows:
+                row_html = str(row).lower()
+                if slug_pattern in row_html:
+                    matching_rows.append(row)
+            
+            if not matching_rows:
+                log.debug("No rows matching slug pattern: {0}".format(slug_pattern))
+                return None
+            
+            log.debug("Filtered {0} rows down to {1} matching collection slug".format(
+                len(result_rows), len(matching_rows)))
+            
+            # Rebuild HTML with only matching rows
+            filtered_html_parts = []
+            for row in matching_rows:
+                filtered_html_parts.append(str(row))
+            
+            return '\n'.join(filtered_html_parts)
+            
+        except ImportError:
+            log.debug("BeautifulSoup not available, returning unfiltered results")
+            return html_content
+        except Exception as e:
+            log.debug("Error filtering results: {0}".format(sstr(e)))
+            return html_content
 
     def get_saga_page(self, saga_slug):
         '''
