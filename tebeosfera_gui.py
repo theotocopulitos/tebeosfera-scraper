@@ -1035,6 +1035,10 @@ class TebeoSferaGUI(ctk.CTk):
         comic.load_image_entries()
         self._log(f"📚 Cómic seleccionado: {comic.filename} ({comic.total_pages} páginas)")
         
+        # Extract cover image if not already extracted
+        if not comic.cover_image:
+            comic.extract_cover()
+        
         # Display first page (portada)
         self._display_comic_page(comic, 0)
         
@@ -1450,6 +1454,15 @@ class TebeoSferaGUI(ctk.CTk):
             return
 
         comic = self.comic_files[self.current_comic_index]
+        
+        # Extract cover image if not already extracted
+        if not comic.cover_image:
+            self._log("📷 Extrayendo portada del cómic...")
+            comic.extract_cover()
+            if comic.cover_image:
+                self._log("✅ Portada extraída correctamente")
+            else:
+                self._log("⚠️ No se pudo extraer la portada")
 
         # Open search dialog
         SearchDialog(self, comic, self.db)
@@ -1831,6 +1844,16 @@ class SearchDialog(ctk.CTkToplevel):
         self.similarity_scores = []  # Store similarity scores
         self.best_match_index = -1  # Index of best match
 
+        # Extract cover image if not already extracted (needed for comparison)
+        if not comic.cover_image:
+            self._log("📷 Extrayendo portada del cómic...")
+            comic.load_image_entries()  # Ensure image entries are loaded
+            comic.extract_cover()
+            if comic.cover_image:
+                self._log("✅ Portada extraída correctamente")
+            else:
+                self._log("⚠️ No se pudo extraer la portada")
+
         self._create_ui()
 
         # Auto-search based on filename
@@ -2093,6 +2116,18 @@ class SearchDialog(ctk.CTkToplevel):
         else:
             print(f"[LOG] {message}")
 
+    def _safe_update_status(self, message):
+        '''Safely update status label, checking if widget still exists'''
+        def update():
+            try:
+                if hasattr(self, 'status_label') and self.status_label.winfo_exists():
+                    self.status_label.configure(text=message)
+            except (tk.TclError, AttributeError):
+                # Widget was destroyed, ignore
+                pass
+        
+        self.after(0, update)
+
     def _fetch_reference_image_data(self, ref):
         '''Fetch high-resolution image data for a SeriesRef or IssueRef'''
         if not ref:
@@ -2309,8 +2344,8 @@ class SearchDialog(ctk.CTkToplevel):
             try:
                 # Update status
                 def update_status(msg):
-                    self.after(0, lambda: self.status_label.configure(text=msg))
-                    self.after(0, lambda: self._log(msg))
+                    self._safe_update_status(msg)
+                    self._log(msg)
                 
                 update_status("Conectando con TebeoSfera...")
                 
@@ -2352,7 +2387,7 @@ class SearchDialog(ctk.CTkToplevel):
                         status_msg = "Sin resultados"
                         if info_line:
                             status_msg += f"\n{info_line}"
-                        self.status_label.configure(text=status_msg)
+                        self._safe_update_status(status_msg)
                         self._log("❌ Sin resultados encontrados")
                         return
 
@@ -2416,7 +2451,7 @@ class SearchDialog(ctk.CTkToplevel):
                     status_text = f"{len(results)} resultados: {type_counts['issue']} issues, {type_counts['collection']} series, {type_counts['saga']} sagas"
                     if info_line:
                         status_text += f"\n{info_line}"
-                    self.status_label.configure(text=status_text + " - Comparando portadas...")
+                    self._safe_update_status(status_text + " - Comparando portadas...")
                     self._log(f"✅ {len(results)} resultados encontrados")
                     self._log(f"   📖 {type_counts['issue']} issues individuales (con metadata completa)")
                     self._log(f"   📚 {type_counts['collection']} colecciones (listas de issues)")
@@ -2428,15 +2463,20 @@ class SearchDialog(ctk.CTkToplevel):
                     if self.comic.cover_image:
                         self._compare_covers_with_results(results)
                     else:
-                        self.status_label.configure(text=f"{len(results)} series encontradas")
+                        self._safe_update_status(f"{len(results)} series encontradas")
                         self._log("ℹ️ Sin portada disponible para comparación")
 
                 self.after(0, update_results)
             except Exception as e:
                 error_msg = f"Error en búsqueda: {str(e)}"
-                self.after(0, lambda: self.status_label.configure(text=error_msg))
-                self.after(0, lambda: self._log(f"❌ {error_msg}"))
-                self.after(0, lambda: messagebox.showerror("Error", error_msg))
+                self._safe_update_status(error_msg)
+                self._log(f"❌ {error_msg}")
+                def show_error():
+                    try:
+                        messagebox.showerror("Error", error_msg)
+                    except:
+                        pass
+                self.after(0, show_error)
 
         thread = threading.Thread(target=search_thread)
         thread.daemon = True
@@ -2449,8 +2489,21 @@ class SearchDialog(ctk.CTkToplevel):
             self.similarity_scores = []
             
             def update_status(msg):
-                self.after(0, lambda: self.status_label.configure(text=msg))
-                self.after(0, lambda: self._log(msg))
+                def safe_update():
+                    try:
+                        # Check if widget still exists
+                        if hasattr(self, 'status_label') and self.status_label.winfo_exists():
+                            self.status_label.configure(text=msg)
+                    except (tk.TclError, AttributeError):
+                        # Widget was destroyed, ignore
+                        pass
+                    # Always log (this is safe)
+                    try:
+                        self._log(msg)
+                    except:
+                        pass
+                
+                self.after(0, safe_update)
 
             update_status(f"Descargando {len(results)} portadas para comparar...")
             
@@ -2547,10 +2600,10 @@ class SearchDialog(ctk.CTkToplevel):
                         self._show_series_preview(self.selected_series)
 
                         status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
-                        self.status_label.configure(text=status_msg)
+                        self._safe_update_status(status_msg)
                         self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
                     else:
-                        self.status_label.configure(text=f"{len(results)} resultados encontrados")
+                        self._safe_update_status(f"{len(results)} resultados encontrados")
                         self._log("ℹ️ Comparación completada")
 
                 self.after(0, update_ui)
