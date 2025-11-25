@@ -497,8 +497,6 @@ class TebeoSferaConnection(object):
         # Method 3: Fallback - search by collection name (may return too many results)
         # But filter to only those that match the collection slug pattern
         try:
-            import urllib.parse
-            import gzip
             
             numbers_data = urllib.parse.urlencode({
                 'action': 'buscador_simple_numeros',
