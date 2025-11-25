@@ -342,8 +342,8 @@ class TebeoSferaConnection(object):
         
         # Collection pages load numbers via AJAX
         # First, try to find the collection ID or AJAX endpoint in the HTML
-        import re
-        from utils_compat import log, sstr
+        
+        
         
         print(f"[DEBUG] get_collection_page called for: {collection_slug}")
         print(f"[DEBUG] Initial HTML size: {len(initial_html) if initial_html else 0} bytes")
