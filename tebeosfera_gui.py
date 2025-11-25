@@ -1910,17 +1910,17 @@ class SearchDialog(ctk.CTkToplevel):
         
         # Also try binding to Button-1 on the expand/collapse icon area
         # This is a workaround if <<TreeviewOpen>> doesn't fire
-        def on_tree_click(event):
-            region = self.results_tree.identify_region(event.x, event.y)
-            if region == 'tree':
-                item_id = self.results_tree.identify_row(event.y)
-                if item_id:
-                    children = self.results_tree.get_children(item_id)
-                    if children:
-                        # Check if it's being expanded (has children but they might be hidden)
-                        # Try to trigger expansion manually
-                        print(f"[DEBUG GUI] Click on tree item {item_id}, has {len(children)} children")
-        self.results_tree.bind('<Button-1>', on_tree_click)
+        # Debug click handler should not interfere with default Treeview behavior.
+        # Commented out to avoid side effects and stdout flooding.
+        # def on_tree_click(event):
+        #     region = self.results_tree.identify_region(event.x, event.y)
+        #     if region == 'tree':
+        #         item_id = self.results_tree.identify_row(event.y)
+        #         if item_id:
+        #             children = self.results_tree.get_children(item_id)
+        #             if children:
+        #                 print(f"[DEBUG GUI] Click on tree item {item_id}, has {len(children)} children")
+        # self.results_tree.bind('<Button-1>', on_tree_click)
         scrollbar.config(command=self.results_tree.yview)
         
         # Store tree item data: {item_id: (type, object)}
