@@ -681,6 +681,12 @@ class TebeoSferaGUI(ctk.CTk):
                             variable=self.recursive_var)
         cb.pack(side=tk.LEFT, padx=5)
         ToolTip(cb, "Buscar archivos en subdirectorios al abrir una carpeta")
+        
+        self.compare_covers_var = tk.BooleanVar(value=False)  # Disabled by default (slow)
+        cb_covers = ctk.CTkCheckBox(options_frame, text="🖼️ Comparar portadas (muy lento)", 
+                                    variable=self.compare_covers_var)
+        cb_covers.pack(side=tk.LEFT, padx=5)
+        ToolTip(cb_covers, "Comparar portadas del cómic con las de TebeoSfera para encontrar el mejor match")
 
     def _create_main_panel(self):
         '''Create main content area'''
@@ -1482,17 +1488,18 @@ class TebeoSferaGUI(ctk.CTk):
 
         comic = self.comic_files[self.current_comic_index]
         
-        # Extract cover image if not already extracted
-        if not comic.cover_image:
-            self._log("📷 Extrayendo portada del cómic...")
-            comic.extract_cover()
-            if comic.cover_image:
-                self._log("✅ Portada extraída correctamente")
-            else:
-                self._log("⚠️ No se pudo extraer la portada")
+        # Extract cover image only if comparison is enabled
+        if self.compare_covers_var.get():
+            if not comic.cover_image:
+                self._log("📷 Extrayendo portada del cómic...")
+                comic.extract_cover()
+                if comic.cover_image:
+                    self._log("✅ Portada extraída correctamente")
+                else:
+                    self._log("⚠️ No se pudo extraer la portada")
 
-        # Open search dialog
-        SearchDialog(self, comic, self.db)
+        # Open search dialog with cover comparison setting
+        SearchDialog(self, comic, self.db, compare_covers=self.compare_covers_var.get())
 
     def _generate_xml_current(self):
         '''Generate ComicInfo.xml for current comic'''
@@ -1719,8 +1726,9 @@ class TebeoSferaGUI(ctk.CTk):
                 # Continue with next comic
                 self.after(100, lambda: self._batch_process_next(indices, current_index + 1))
 
-            # Create search dialog
-            dialog = BatchSearchDialog(self, comic, self.db, on_dialog_close)
+            # Create search dialog with cover comparison setting
+            dialog = BatchSearchDialog(self, comic, self.db, on_dialog_close, 
+                                      compare_covers=self.compare_covers_var.get())
             self.wait_window(dialog)
 
     def _update_status(self, message):
@@ -1840,7 +1848,7 @@ class TebeoSferaGUI(ctk.CTk):
 class SearchDialog(ctk.CTkToplevel):
     '''Dialog for searching and selecting issues from TebeoSfera'''
 
-    def __init__(self, parent, comic, db):
+    def __init__(self, parent, comic, db, compare_covers=False):
         ctk.CTkToplevel.__init__(self, parent)
 
         # Color scheme (inherit from parent if available)
@@ -1859,6 +1867,7 @@ class SearchDialog(ctk.CTkToplevel):
         self.parent = parent  # Store parent reference for logging
         self.comic = comic
         self.db = db
+        self.compare_covers = compare_covers  # Whether to compare covers (slow)
         self.search_results = []
         self.selected_series = None
         self.issues_list = []
@@ -1871,8 +1880,8 @@ class SearchDialog(ctk.CTkToplevel):
         self.similarity_scores = []  # Store similarity scores
         self.best_match_index = -1  # Index of best match
 
-        # Extract cover image if not already extracted (needed for comparison)
-        if not comic.cover_image:
+        # Extract cover image only if comparison is enabled
+        if self.compare_covers and not comic.cover_image:
             self._log("📷 Extrayendo portada del cómic...")
             comic.load_image_entries()  # Ensure image entries are loaded
             comic.extract_cover()
@@ -2432,7 +2441,7 @@ class SearchDialog(ctk.CTkToplevel):
                     
                     # Only insert results if NOT doing image comparison
                     # (image comparison will insert them with scores)
-                    if not self.comic.cover_image:
+                    if not self.compare_covers:
                         # Insert sagas first
                         if sagas:
                             sagas_parent = self.results_tree.insert('', 'end', text=f"🗂️ Sagas ({len(sagas)})", tags=('header',))
@@ -2486,12 +2495,16 @@ class SearchDialog(ctk.CTkToplevel):
                     sample_names = ", ".join(result.series_name_s[:40] for result in results[:5])
                     self._log(f"📚 Primeros resultados ({min(len(results), 5)}/{len(results)}): {sample_names}")
 
-                    # Start image comparison if comic has a cover
-                    if self.comic.cover_image:
+                    # Start image comparison if enabled and comic has a cover
+                    if self.compare_covers and self.comic.cover_image:
                         self._compare_covers_with_results(results)
                     else:
-                        self._safe_update_status(f"{len(results)} series encontradas")
-                        self._log("ℹ️ Sin portada disponible para comparación")
+                        if not self.compare_covers:
+                            self._safe_update_status(f"{len(results)} series encontradas (comparación de portadas deshabilitada)")
+                            self._log("ℹ️ Comparación de portadas deshabilitada")
+                        else:
+                            self._safe_update_status(f"{len(results)} series encontradas")
+                            self._log("ℹ️ Sin portada disponible para comparación")
 
                 self.after(0, update_results)
             except Exception as e:
@@ -3325,13 +3338,15 @@ class SearchDialog(ctk.CTkToplevel):
                     display_text = "#{0} - {1}".format(issue.issue_num_s, issue.title_s)
                     self.results_listbox.insert(tk.END, display_text)
 
-                self.status_label.configure(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
-
-                # Start image comparison if comic has a cover
-                if self.comic.cover_image:
+                # Start image comparison if enabled and comic has a cover
+                if self.compare_covers and self.comic.cover_image:
+                    self.status_label.configure(text="{0} issues encontrados - Comparando portadas...".format(len(issues)))
                     self._compare_covers_with_issues(issues)
                 else:
-                    self.status_label.configure(text="{0} issues encontrados".format(len(issues)))
+                    if not self.compare_covers:
+                        self.status_label.configure(text="{0} issues encontrados (comparación deshabilitada)".format(len(issues)))
+                    else:
+                        self.status_label.configure(text="{0} issues encontrados".format(len(issues)))
 
             self.after(0, update_issues)
 
@@ -3497,9 +3512,9 @@ class SearchDialog(ctk.CTkToplevel):
 class BatchSearchDialog(SearchDialog):
     '''Simplified search dialog for batch processing'''
 
-    def __init__(self, parent, comic, db, on_close_callback):
+    def __init__(self, parent, comic, db, on_close_callback, compare_covers=False):
         self.on_close_callback = on_close_callback
-        SearchDialog.__init__(self, parent, comic, db)
+        SearchDialog.__init__(self, parent, comic, db, compare_covers=compare_covers)
 
     def destroy(self):
         '''Override destroy to call callback'''
