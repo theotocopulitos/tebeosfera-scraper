@@ -1874,6 +1874,15 @@ class SearchDialog(ctk.CTkToplevel):
         self.selected_issue = None
         self.cover_images = {}  # Cache for PhotoImage objects
         self.mode = 'series'  # 'series' or 'issues'
+        
+        # HTTP request tracking
+        self.http_stats = {
+            'total_requests': 0,
+            'total_bytes': 0,
+            'total_time_ms': 0,
+            'cache_hits': 0,
+            'cache_misses': 0
+        }
 
         # Image comparison data
         self.downloaded_images = []  # Store PIL images for comparison
@@ -1892,8 +1901,8 @@ class SearchDialog(ctk.CTkToplevel):
 
         self._create_ui()
 
-        # Auto-search based on filename
-        self._auto_search()
+        # Auto-search based on filename (delay to ensure UI is ready)
+        self.after(100, self._auto_search)
 
     def _create_ui(self):
         '''Create search dialog UI with improved styling'''
@@ -2135,14 +2144,25 @@ class SearchDialog(ctk.CTkToplevel):
                              fg_color="gray50", hover_color="gray60")
         close_btn.pack(side=tk.RIGHT)
 
-        # Status label with better styling
+        # Status bar with HTTP stats on the right
         status_container = ctk.CTkFrame(self, corner_radius=0)
         status_container.pack(fill=tk.X, side=tk.BOTTOM)
         
-        self.status_label = ctk.CTkLabel(status_container, text="", 
+        # Use a CTkFrame for the inner container to avoid mixing tk and CTk widgets
+        status_frame = ctk.CTkFrame(status_container, fg_color="transparent")
+        status_frame.pack(fill=tk.X, padx=0, pady=0)
+        
+        self.status_label = ctk.CTkLabel(status_frame, text="", 
                                      anchor="w",
                                      padx=15, pady=8)
-        self.status_label.pack(fill=tk.X)
+        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # HTTP stats label on the right
+        self.http_stats_label = ctk.CTkLabel(status_frame, text="📡 HTTP: 0 solicitudes | 0 KB | 0 ms",
+                                           anchor="e",
+                                           padx=15, pady=8,
+                                           font=('Arial', 9))
+        self.http_stats_label.pack(side=tk.RIGHT)
         self._update_open_buttons()
 
     def _log(self, message):
@@ -2172,14 +2192,58 @@ class SearchDialog(ctk.CTkToplevel):
         extra_url = getattr(ref, 'extra_image_url', None)
         if extra_url:
             try:
-                data = self.db.connection.download_image(extra_url)
+                # Check if from cache
+                was_cached = False
+                if hasattr(self.db, 'cache'):
+                    cached = self.db.cache.get_cached_image(extra_url)
+                    if cached is not None:
+                        was_cached = True
+                        data = cached
+                    else:
+                        data = self.db.connection.download_image(extra_url)
+                        if data:
+                            self.db.cache.cache_image(extra_url, data)
+                else:
+                    data = self.db.connection.download_image(extra_url)
+                
                 if data:
+                    # Track HTTP request
+                    if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'last_response_size'):
+                        request_info = {
+                            'bytes': self.db.connection.last_response_size,
+                            'elapsed_ms': getattr(self.db.connection, 'last_elapsed_ms', 0)
+                        }
+                        self._update_http_stats(request_info, from_cache=was_cached)
                     return data
             except Exception as e:
                 self._log(f"⚠️ Error descargando imagen extra: {e}")
 
         try:
-            return self.db.query_image(ref)
+            # Check if from cache
+            was_cached = False
+            if hasattr(self.db, 'cache'):
+                url = getattr(ref, 'thumb_url_s', None) or getattr(ref, 'extra_image_url', None)
+                if url:
+                    cached = self.db.cache.get_cached_image(url)
+                    if cached is not None:
+                        was_cached = True
+                        data = cached
+                    else:
+                        data = self.db.query_image(ref)
+                else:
+                    data = self.db.query_image(ref)
+            else:
+                data = self.db.query_image(ref)
+            
+            # Track HTTP request
+            if data and hasattr(self.db, 'connection') and hasattr(self.db.connection, 'last_response_size'):
+                request_info = {
+                    'bytes': self.db.connection.last_response_size,
+                    'elapsed_ms': getattr(self.db.connection, 'last_elapsed_ms', 0)
+                }
+                self._update_http_stats(request_info, from_cache=was_cached)
+            
+            return data
         except Exception as e:
             self._log(f"⚠️ Error obteniendo imagen desde DB: {e}")
             return None
@@ -2298,6 +2362,43 @@ class SearchDialog(ctk.CTkToplevel):
             self._log(f"{context} {info_str}")
         else:
             self._log(f"{context} (sin metadatos de URL)")
+    
+    def _update_http_stats(self, request_info=None, from_cache=False):
+        '''Update HTTP statistics and display (thread-safe)'''
+        def update():
+            try:
+                if from_cache:
+                    self.http_stats['cache_hits'] += 1
+                else:
+                    self.http_stats['cache_misses'] += 1
+                    if request_info:
+                        self.http_stats['total_requests'] += 1
+                        # Get bytes value - only fallback when key is missing, not when value is 0
+                        bytes_value = request_info.get('size_bytes')
+                        if bytes_value is None:
+                            bytes_value = request_info.get('bytes', 0)
+                        self.http_stats['total_bytes'] += bytes_value
+                        self.http_stats['total_time_ms'] += request_info.get('elapsed_ms', 0) or 0
+                
+                # Update display
+                requests = self.http_stats['total_requests']
+                kb = self.http_stats['total_bytes'] / 1024.0
+                ms = self.http_stats['total_time_ms']
+                hits = self.http_stats['cache_hits']
+                misses = self.http_stats['cache_misses']
+                
+                stats_text = f"📡 HTTP: {requests} solicitudes | {kb:.1f} KB | {ms:.0f} ms"
+                if hits > 0 or misses > 0:
+                    stats_text += f" | 🗄️ Cache: {hits} hits / {misses} misses"
+                
+                if hasattr(self, 'http_stats_label') and self.http_stats_label.winfo_exists():
+                    self.http_stats_label.configure(text=stats_text)
+            except (tk.TclError, AttributeError):
+                # Widget destroyed, ignore
+                pass
+        
+        # Execute in main thread
+        self.after(0, update)
 
     def _auto_search(self):
         '''Auto-search based on filename with edit option'''
@@ -2385,6 +2486,10 @@ class SearchDialog(ctk.CTkToplevel):
                 
                 update_status("Conectando con TebeoSfera...")
                 
+                # Perform search (cache is checked inside search_series)
+                # Save last_request_url to detect if a new HTTP request was made
+                last_url_before = getattr(self.db.connection, 'last_request_url', None) if hasattr(self.db, 'connection') else None
+                
                 # Get URL before search
                 search_url = None
                 if hasattr(self.db, 'connection'):
@@ -2396,13 +2501,41 @@ class SearchDialog(ctk.CTkToplevel):
                 
                 results = self.db.search_series(query)
                 
+                # Check if a new HTTP request was actually made
+                last_url_after = getattr(self.db.connection, 'last_request_url', None) if hasattr(self.db, 'connection') else None
+                # If URL didn't change, it means result came from cache
+                # If both are None, it could be cache hit (no HTTP request) or first request
+                # We'll check by seeing if URL changed
+                if last_url_before is not None:
+                    http_request_made = (last_url_before != last_url_after)
+                else:
+                    # If before was None and after is also None, likely cache hit (no HTTP request made)
+                    # If after is not None, HTTP request was made
+                    http_request_made = (last_url_after is not None)
+                was_cached = not http_request_made
+                
                 request_info = {}
-                if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
+                if http_request_made and hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
                     request_info = self.db.connection.get_request_info() or {}
-                    if request_info:
+                    if request_info.get('status') is not None or request_info.get('status_code') is not None:
+                        # Convert to standard format
+                        if 'status_code' in request_info:
+                            request_info['status'] = request_info['status_code']
+                        if 'size_bytes' in request_info:
+                            request_info['bytes'] = request_info['size_bytes']
+                        if hasattr(self.db.connection, 'last_elapsed_ms'):
+                            request_info['elapsed_ms'] = self.db.connection.last_elapsed_ms
+                        
                         self._log(f"📡 Respuesta HTTP: {request_info.get('status_code', 'N/A')} - {request_info.get('size_bytes', 0)} bytes")
                         if request_info.get('url'):
                             self._log(f"🔗 URL final: {request_info.get('url')}")
+                        
+                        # Update HTTP stats
+                        self._update_http_stats(request_info, from_cache=False)
+                elif was_cached:
+                    # Result came from cache
+                    self._log(f"🗄️ ✅ Resultados obtenidos del caché")
+                    self._update_http_stats(from_cache=True)
 
                 update_status(f"Búsqueda completada: {len(results)} resultados encontrados")
 
@@ -2636,12 +2769,16 @@ class SearchDialog(ctk.CTkToplevel):
                         self.results_tree.selection_set(best_item_id)
                         self.results_tree.see(best_item_id)
                         # Trigger selection event
-                        self.selected_series = self.search_results[self.best_match_index]
-                        self._show_series_preview(self.selected_series)
+                        if self.best_match_index is not None and 0 <= self.best_match_index < len(self.search_results):
+                            self.selected_series = self.search_results[self.best_match_index]
+                            self._show_series_preview(self.selected_series)
 
-                        status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
-                        self._safe_update_status(status_msg)
-                        self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
+                            status_msg = f"Mejor match encontrado: {best_score:.0f}% similar (⭐ marcado)"
+                            self._safe_update_status(status_msg)
+                            if self.selected_series:
+                                self._log(f"⭐ Mejor match: {self.selected_series.series_name_s} ({best_score:.0f}% similar)")
+                            else:
+                                self._log(f"⭐ Mejor match encontrado ({best_score:.0f}% similar)")
                     else:
                         self._safe_update_status(f"{len(results)} resultados encontrados")
                         self._log("ℹ️ Comparación completada")
@@ -2831,8 +2968,37 @@ class SearchDialog(ctk.CTkToplevel):
                 
                 self._log(f"🔍 Cargando hijos de {series_type}: {series_name} (key: {series_key})")
                 
+                # Save state before query to detect if HTTP request was made
+                was_cached = False
+                if hasattr(self.db, 'connection') and hasattr(self.db, 'cache') and self.db.cache:
+                    # Check if result is in cache before querying
+                    cached = self.db.cache.get_cached_series_children(series_key)
+                    was_cached = (cached is not None)
+                    # Save last_request_url to detect if a new HTTP request was made
+                    last_url_before = getattr(self.db.connection, 'last_request_url', None)
+                
                 # Use query_series_children which returns both collections and issues
                 children = self.db.query_series_children(item_obj)
+                
+                # Track HTTP request if made
+                if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
+                    # Check if a new HTTP request was actually made
+                    last_url_after = getattr(self.db.connection, 'last_request_url', None)
+                    http_request_made = (last_url_before != last_url_after) if 'last_url_before' in locals() else True
+                    
+                    if http_request_made and not was_cached:
+                        request_info = self.db.connection.get_request_info() or {}
+                        if request_info.get('status') is not None or request_info.get('status_code') is not None:
+                            if 'status_code' in request_info:
+                                request_info['status'] = request_info['status_code']
+                            if 'size_bytes' in request_info:
+                                request_info['bytes'] = request_info['size_bytes']
+                            if hasattr(self.db.connection, 'last_elapsed_ms'):
+                                request_info['elapsed_ms'] = self.db.connection.last_elapsed_ms
+                            self._update_http_stats(request_info, from_cache=False)
+                    elif was_cached:
+                        # Result came from cache
+                        self._update_http_stats(from_cache=True)
                 
                 collections = children.get('collections', [])
                 issues = children.get('issues', [])
@@ -3028,8 +3194,39 @@ class SearchDialog(ctk.CTkToplevel):
             # Load cover
             image_data = self._fetch_reference_image_data(actual_issue_ref)
             
+            # Save state before query to detect if HTTP request was made
+            was_cached = False
+            if hasattr(self.db, 'connection') and hasattr(self.db, 'cache') and self.db.cache:
+                # Check if result is in cache before querying
+                issue_key = getattr(actual_issue_ref, 'issue_key', None) or getattr(actual_issue_ref, 'series_key', None)
+                if issue_key:
+                    cached = self.db.cache.get_cached_issue_details(issue_key)
+                    was_cached = (cached is not None)
+                # Save last_request_url to detect if a new HTTP request was made
+                last_url_before = getattr(self.db.connection, 'last_request_url', None)
+            
             # Query full issue details
             issue = self.db.query_issue_details(actual_issue_ref)
+            
+            # Track HTTP request if made
+            if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
+                # Check if a new HTTP request was actually made
+                last_url_after = getattr(self.db.connection, 'last_request_url', None)
+                http_request_made = (last_url_before != last_url_after) if 'last_url_before' in locals() else True
+                
+                if http_request_made and not was_cached:
+                    request_info = self.db.connection.get_request_info() or {}
+                    if request_info.get('status') is not None or request_info.get('status_code') is not None:
+                        if 'status_code' in request_info:
+                            request_info['status'] = request_info['status_code']
+                        if 'size_bytes' in request_info:
+                            request_info['bytes'] = request_info['size_bytes']
+                        if hasattr(self.db.connection, 'last_elapsed_ms'):
+                            request_info['elapsed_ms'] = self.db.connection.last_elapsed_ms
+                        self._update_http_stats(request_info, from_cache=False)
+                elif was_cached:
+                    # Result came from cache
+                    self._update_http_stats(from_cache=True)
             
             def update_ui():
                 # Show cover
@@ -3484,7 +3681,38 @@ class SearchDialog(ctk.CTkToplevel):
 
         # Query full issue details in background
         def query_details():
+            # Save state before query to detect if HTTP request was made
+            was_cached = False
+            if hasattr(self.db, 'connection') and hasattr(self.db, 'cache') and self.db.cache:
+                # Check if result is in cache before querying
+                issue_key = getattr(self.selected_issue, 'issue_key', None) or getattr(self.selected_issue, 'series_key', None)
+                if issue_key:
+                    cached = self.db.cache.get_cached_issue_details(issue_key)
+                    was_cached = (cached is not None)
+                # Save last_request_url to detect if a new HTTP request was made
+                last_url_before = getattr(self.db.connection, 'last_request_url', None)
+            
             issue = self.db.query_issue_details(self.selected_issue)
+            
+            # Track HTTP request if made
+            if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
+                # Check if a new HTTP request was actually made
+                last_url_after = getattr(self.db.connection, 'last_request_url', None)
+                http_request_made = (last_url_before != last_url_after) if 'last_url_before' in locals() else True
+                
+                if http_request_made and not was_cached:
+                    request_info = self.db.connection.get_request_info() or {}
+                    if request_info.get('status') is not None or request_info.get('status_code') is not None:
+                        if 'status_code' in request_info:
+                            request_info['status'] = request_info['status_code']
+                        if 'size_bytes' in request_info:
+                            request_info['bytes'] = request_info['size_bytes']
+                        if hasattr(self.db.connection, 'last_elapsed_ms'):
+                            request_info['elapsed_ms'] = self.db.connection.last_elapsed_ms
+                        self._update_http_stats(request_info, from_cache=False)
+                elif was_cached:
+                    # Result came from cache
+                    self._update_http_stats(from_cache=True)
 
             def complete_selection():
                 if issue:
@@ -3533,7 +3761,38 @@ class BatchSearchDialog(SearchDialog):
 
         # Query full issue details in background
         def query_details():
+            # Save state before query to detect if HTTP request was made
+            was_cached = False
+            if hasattr(self.db, 'connection') and hasattr(self.db, 'cache') and self.db.cache:
+                # Check if result is in cache before querying
+                issue_key = getattr(self.selected_issue, 'issue_key', None) or getattr(self.selected_issue, 'series_key', None)
+                if issue_key:
+                    cached = self.db.cache.get_cached_issue_details(issue_key)
+                    was_cached = (cached is not None)
+                # Save last_request_url to detect if a new HTTP request was made
+                last_url_before = getattr(self.db.connection, 'last_request_url', None)
+            
             issue = self.db.query_issue_details(self.selected_issue)
+            
+            # Track HTTP request if made
+            if hasattr(self.db, 'connection') and hasattr(self.db.connection, 'get_request_info'):
+                # Check if a new HTTP request was actually made
+                last_url_after = getattr(self.db.connection, 'last_request_url', None)
+                http_request_made = (last_url_before != last_url_after) if 'last_url_before' in locals() else True
+                
+                if http_request_made and not was_cached:
+                    request_info = self.db.connection.get_request_info() or {}
+                    if request_info.get('status') is not None or request_info.get('status_code') is not None:
+                        if 'status_code' in request_info:
+                            request_info['status'] = request_info['status_code']
+                        if 'size_bytes' in request_info:
+                            request_info['bytes'] = request_info['size_bytes']
+                        if hasattr(self.db.connection, 'last_elapsed_ms'):
+                            request_info['elapsed_ms'] = self.db.connection.last_elapsed_ms
+                        self._update_http_stats(request_info, from_cache=False)
+                elif was_cached:
+                    # Result came from cache
+                    self._update_http_stats(from_cache=True)
 
             def complete_selection():
                 if issue:

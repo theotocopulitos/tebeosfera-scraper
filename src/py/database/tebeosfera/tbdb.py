@@ -12,6 +12,12 @@ from .tbconnection import TebeoSferaConnection, get_connection, build_issue_url
 from .tbparser import TebeoSferaParser
 from utils_compat import sstr, log
 
+# Import cache module
+try:
+    from .tbcache import TebeoSferaCache
+except ImportError:
+    TebeoSferaCache = None
+
 
 class TebeoSferaDB(object):
     '''
@@ -19,24 +25,42 @@ class TebeoSferaDB(object):
     compatible with the existing scraper architecture.
     '''
 
-    def __init__(self, log_callback=None):
+    def __init__(self, log_callback=None, cache_dir=None):
         '''
         Initialize the TebeoSfera database adapter
         
         Args:
             log_callback: Optional function to call for logging (takes a string message)
+            cache_dir: Optional directory for cache (if None, uses default location)
         '''
         self.connection = get_connection()
         self.parser = TebeoSferaParser(log_callback=log_callback)
+        # Initialize cache if available
+        self.cache = TebeoSferaCache(cache_dir) if TebeoSferaCache else None
 
     def search_series(self, search_terms):
         '''
         Search for series matching the given search terms.
+        Uses cache if available.
 
         search_terms: String with search keywords
         Returns: List of SeriesRef objects
         '''
         log.debug("Searching TebeoSfera for: ", search_terms)
+
+        # Try to get from cache first
+        if self.cache:
+            try:
+                cached_results = self.cache.get_cached_search(search_terms)
+                if cached_results is not None:
+                    log.debug(f"✅ Cache hit for search: {search_terms} ({len(cached_results)} results)")
+                    return cached_results
+                else:
+                    log.debug(f"❌ Cache miss for search: {search_terms}")
+            except Exception as e:
+                log.debug(f"⚠️ Error checking cache: {e}")
+        else:
+            log.debug("⚠️ Cache not available")
 
         # Perform search
         html_content = self.connection.search(search_terms)
@@ -145,6 +169,15 @@ class TebeoSferaDB(object):
             sum(1 for r in results if r.get('type') == 'issue'),
             sum(1 for r in results if r.get('type') == 'collection'),
             sum(1 for r in results if r.get('type') == 'saga')))
+        
+        # Cache results before returning
+        if self.cache and series_refs:
+            try:
+                self.cache.cache_search(search_terms, series_refs)
+                log.debug(f"✅ Cached search results for: {search_terms} ({len(series_refs)} results)")
+            except Exception as e:
+                log.debug(f"⚠️ Error caching search results: {e}")
+        
         return series_refs
 
     def query_series_details(self, series_ref):
@@ -184,6 +217,13 @@ class TebeoSferaDB(object):
         log.debug("Series type: {0}".format(series_type))
         log.debug("Series key: {0}".format(series_key))
         log.debug("Series name: {0}".format(getattr(series_ref, 'series_name_s', 'unknown')))
+        
+        # Try to get from cache first
+        if self.cache:
+            cached = self.cache.get_cached_series_children(series_key)
+            if cached is not None:
+                log.debug(f"Cache hit for series children: {series_key}")
+                return cached
         
         # Fetch the appropriate page based on type
         if series_type == 'saga':
@@ -264,7 +304,13 @@ class TebeoSferaDB(object):
             len(collections), len(issue_refs), series_type))
         log.debug("=== query_series_children complete ===")
         
-        return {'collections': collections, 'issues': issue_refs}
+        result = {'collections': collections, 'issues': issue_refs}
+        
+        # Cache result before returning
+        if self.cache and series_key:
+            self.cache.cache_series_children(series_key, result)
+        
+        return result
 
     def query_series_issues(self, series_ref):
         '''
@@ -293,6 +339,13 @@ class TebeoSferaDB(object):
         
         log.debug("Querying issue details for: ", issue_key or "unknown")
 
+        # Try to get from cache first
+        if self.cache:
+            cached = self.cache.get_cached_issue_details(issue_key)
+            if cached is not None:
+                log.debug(f"Cache hit for issue details: {issue_key}")
+                return cached
+
         # Fetch the issue page
         if not issue_key:
             log.debug("No issue key available")
@@ -314,6 +367,23 @@ class TebeoSferaDB(object):
 
         # Create Issue object from parsed metadata
         issue = self._create_issue_from_metadata(issue_ref, metadata)
+
+        # Cache issue and generate XML automatically
+        if self.cache and issue_key and issue:
+            try:
+                # Generate XML automatically
+                from comicinfo_xml import ComicInfoGenerator
+                generator = ComicInfoGenerator()
+                # Convert Issue to dict for XML
+                xml_dict = self._issue_to_xml_dict(issue)
+                xml_content = generator.generate_xml(xml_dict)
+                
+                # Cache issue with XML
+                self.cache.cache_issue_details(issue_key, issue, xml_content)
+            except Exception as e:
+                log.debug(f"Error generating/caching XML: {e}")
+                # Cache only the issue if XML generation fails
+                self.cache.cache_issue_details(issue_key, issue, None)
 
         return issue
 
@@ -498,8 +568,21 @@ class TebeoSferaDB(object):
             log.debug("No URL available for image")
             return None
 
+        # Try cache first
+        if self.cache:
+            cached_image = self.cache.get_cached_image(url)
+            if cached_image is not None:
+                log.debug(f"Cache hit for image: {url}")
+                return cached_image
+
         # Download the image
-        return self.connection.download_image(url)
+        image_data = self.connection.download_image(url)
+        
+        # Cache it if successful
+        if self.cache and image_data:
+            self.cache.cache_image(url, image_data)
+        
+        return image_data
 
     def save_image(self, ref_or_url, filepath):
         '''
@@ -521,6 +604,50 @@ class TebeoSferaDB(object):
             return False
 
         return self.connection.save_image(url, filepath)
+
+    def _issue_to_xml_dict(self, issue):
+        '''
+        Convert Issue object to dictionary for XML generation.
+        
+        issue: Issue object
+        Returns: Dictionary with XML field names
+        '''
+        return {
+            'title': issue.title_s,
+            'series': issue.series_name_s or issue.collection_s,
+            'number': issue.issue_num_s,
+            'count': issue.issue_count_n if issue.issue_count_n > 0 else None,
+            'volume': issue.volume_year_n if issue.volume_year_n > 0 else None,
+            'summary': issue.summary_s,
+            'publisher': issue.publisher_s,
+            'imprint': issue.imprint_s,
+            'web': issue.webpage_s,
+            'page_count': issue.page_count_n if issue.page_count_n > 0 else None,
+            'format': issue.format_s,
+            'year': issue.pub_year_n if issue.pub_year_n > 0 else None,
+            'month': issue.pub_month_n if issue.pub_month_n > 0 else None,
+            'day': issue.pub_day_n if issue.pub_day_n > 0 else None,
+            'writer': issue.writers_sl,
+            'penciller': issue.pencillers_sl,
+            'inker': issue.inkers_sl,
+            'colorist': issue.colorists_sl,
+            'letterer': issue.letterers_sl,
+            'cover_artist': issue.cover_artists_sl,
+            'editor': issue.editors_sl,
+            'translator': issue.translators_sl,
+            'characters': issue.characters_sl,
+            'genre': issue.crossovers_sl if issue.crossovers_sl else None,
+            'isbn': issue.isbn_s,
+            'legal_deposit': issue.legal_deposit_s,
+            'price': issue.price_s,
+            'original_title': issue.origin_title_s,
+            'original_publisher': issue.origin_publisher_s,
+            'collection': issue.collection_s,
+            'binding': issue.binding_s,
+            'dimensions': issue.dimensions_s,
+            'color': issue.color_s,
+            'language_iso': issue.language_s if issue.language_s else 'es',
+        }
 
     def close(self):
         '''Close the database connection'''
